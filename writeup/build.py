@@ -111,7 +111,8 @@ def numbers(audit_dir, verify):
     n["calib_chunks_128"] = im["calibration_file"]["chunks_at"]["128"]
     assert im["calibration_file"]["name"] == im["public"]["dataset"] == im["W"]["dataset"]
     assert im["W"]["chunks_count"] == im["calibration_file"]["chunks_at"]["512"]  # our run matches the count
-    shared = [b for b in ("Q4_K_M", "IQ2_M", "R") if im[b]["chunks_count"] == im["public"]["chunks_count"]]
+    shared = [b for b in ("Q4_K_M", "IQ2_M", "R") if (im[b]["chunks_count"], im[b]["dataset"], im[b]["entries_count"])
+              == (im["public"]["chunks_count"], im["public"]["dataset"], im["public"]["entries_count"])]
     assert shared == ["Q4_K_M", "IQ2_M", "R"], shared  # same imatrix file name and chunk count as P
     tok = im["calibration_file"]["tokens"]  # "no chunk size gives exactly <public chunks>" from this file
     assert all(tok // c != im["public"]["chunks_count"] for c in range(1, tok + 1))
@@ -143,6 +144,16 @@ def numbers(audit_dir, verify):
     lines = [l for l in open(os.path.join(verify, "default.txt")) if l[:4] in ("ok  ", "FAIL")]
     n["verify_combos"] = len(lines)
     n["verify_identical"] = sum(l.startswith("ok") for l in lines)
+    assert n["verify_identical"] == n["verify_combos"], "the text says the default mode reproduces scores exactly"
+
+    # further statements the text makes
+    i2 = A["IQ2_M"]["multi_turn_base"]["crashed_tasks"]
+    assert n["iq2_m_mt_crash_args"] + n["iq2_m_mt_crash_name"] == len(i2), "crash split must cover all crashes"
+    assert n["iq3_sp_tol_gain_items"] <= n["iq3_sp_recoverable"], "gains are at most the recoverable calls"
+    tol_ls = {b: score_head(verify, "tolerant", b, "live_simple")["accuracy"] for b in IQ3}
+    top2 = sorted(tol_ls, key=tol_ls.get, reverse=True)[:2]
+    assert set(top2) == {"IQ3_XXS", "IQ3_XXS_R"}, "text: P and R score highest of the 3-bit builds on live_simple"
+    assert "simple_python" not in A["Q4_K_M"], "text: Q4_K_M was run on multi-turn only"
     return n
 
 
