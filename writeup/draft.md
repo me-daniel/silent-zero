@@ -4,17 +4,17 @@
 
 *Draft. All numbers are filled in by `writeup/build.py` from the audit and re-scoring outputs.*
 
-**In short**
+## Abstract
 
-- On BFCL's `simple_python`, a public IQ3_XXS build (about 3 bits per weight) of Qwen3-4B-Instruct-2507 scores 65.75%, against 95.50% for the 8-bit build. 25.3 of those 29.8 points come from one thing: the model writes a complete call and stops before the closing `</tool_call>`. BFCL's parser then drops the call without a trace and scores the item as if the model had answered in prose.
-- Whether a 3-bit build leaves out that tag depends on its importance matrix (imatrix). Builds I made from the same weights with other imatrices rarely do it on the two single-turn categories. Once the parser tolerates the missing tag, all seven 3-bit builds score 89.50–91.50% on `simple_python`.
-- Multi-turn tasks are different. Of the 32 tasks that the 8-bit build passes and the 3-bit build fails, 6 contain a malformed call. The other 26 contain none, so a more tolerant parser couldn't rescue them.
+Quantized GGUF files are a common way to run open-weight language models on local hardware, and tool calling is what turns those models into agents. Ask a 3-bit model for a tool call and it may write the call correctly, then stop one token short. The benchmark cannot tell that apart from a model that called nothing.
 
-**Terms.** A *build* is one GGUF file of the model. Low-bit builds are usually made with an *imatrix*: per-weight importance statistics that llama.cpp collects by running the full-precision model over a calibration text, cut into *chunks* of a fixed number of tokens. In multi-turn tasks, a *task* has several user *turns*, and each turn has one or more model *steps* (one generation each).
+This note audits how the Berkeley Function Calling Leaderboard (BFCL) scores ten GGUF builds of one model, Qwen3-4B-Instruct-2507, from 8 down to 2 bits. All builds come from the same 16-bit weights and run on the same server with greedy decoding. Every saved output is classified by what BFCL's parser does with it, and the single-turn outputs are re-scored with a patched parser that accepts a missing closing tag. With its options off, the patched evaluator reproduces the official scores exactly.
 
-## 1. The parser
+The main findings are: (1) On `simple_python`, most of the 3-bit score loss is a parsing artefact. The public IQ3_XXS build scores 65.75% against 95.50% for 8-bit, and 25.3 of those 29.8 points come from complete calls that lack the closing `</tool_call>`. (2) Whether the tag goes missing depends on the importance matrix used for quantization, not on the quantizer version. With the tag tolerated, all seven 3-bit builds score between 89.50% and 91.50% on `simple_python`. (3) In multi-turn tasks the parser explains little. Of the 32 tasks that 8-bit passes and 3-bit fails, 6 contain a malformed call and the other 26 contain none. (4) Some malformed calls crash a whole multi-turn task. At 2 bits, 25 of 200 tasks are lost this way. The patch in this repository reports each of these failures separately without changing any score.
 
-BFCL's handler for Qwen-style models extracts tool calls like this (`qwen_fc.py` at commit `6ea5797`, the latest `main` as of November 2026):
+## 1. How BFCL reads a tool call
+
+BFCL's handler for Qwen-style models extracts tool calls with a single regular expression (`qwen_fc.py` at commit `6ea5797`, the latest `main` as of November 2026):
 
 ```python
 pattern = r"<tool_call>\n(.*?)\n</tool_call>"
@@ -31,24 +31,32 @@ for match in matches:
 return result
 ```
 
-Anything that doesn't match is gone: an unclosed tag, missing newlines around the JSON, invalid JSON. Single-turn items then fail as `wrong_count` ("Wrong number of functions"), exactly like a model that called nothing. In multi-turn tasks the turn simply ends, and the handler's own log says "Successfully decoded model response" with an empty list.
+Anything that does not match is dropped without a trace. That covers an unclosed tag, missing newlines around the JSON and invalid JSON. A single-turn item then fails as `wrong_count` ("Wrong number of functions"), exactly like a model that called nothing. In a multi-turn task the turn simply ends, and the handler's own log reports "Successfully decoded model response" with an empty list.
 
-There's a second path. A call that *is* valid JSON but lacks a usable `"name"` or `"arguments"` key is kept and written into the chat history. When the next prompt is built, the template indexes `tool_call["name"]` or `tool_call["arguments"]` and raises. The whole multi-turn task is then recorded as `inference_error`, including turns the model might have passed.
+A second path is worse. A call that is valid JSON but lacks a usable `"name"` or `"arguments"` key is kept and written into the chat history. When the next prompt is built, the chat template indexes `tool_call["name"]` or `tool_call["arguments"]` and raises an exception. BFCL then records the whole multi-turn task as `inference_error`, including turns the model might have passed.
 
-## 2. What the 3-bit model actually writes
+## 2. Builds and setup
 
-I classified every saved model output by what the parser does with it. The builds are listed in section 3; all were served with llama.cpp and greedy decoding.
+A build is one GGUF file of the model. Low-bit builds are usually made with an **importance matrix** (imatrix): per-weight statistics that llama.cpp collects by running the 16-bit model over a calibration text, cut into **chunks** of a fixed number of tokens. Q8_0, Q4_K_M, IQ2_M and the public IQ3_XXS build (called P below) come from `bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF` at revision `ae44f08`. The other six are IQ3_XXS builds I quantized myself from the same weights. They differ from P in the imatrix and, for one of them, in the llama.cpp version used to quantize. Section 4 lists them all.
 
-**Single-turn** (`simple_python`, 400 items). The public IQ3_XXS build leaves 112 calls unclosed. 110 of them are complete, parseable calls apart from the missing tag, so the model stopped after the JSON, not in the middle of it. The 8-bit build, on the same server and settings, leaves 0 unclosed. On `live_simple` (258 items), the 3-bit build leaves 63 unclosed.
+All builds were served with llama.cpp `llama-server` (build tag b10964) on Apple Silicon, with one slot, greedy decoding and the server prompt cache off. Greedy runs reproduced byte-identically across server restarts. I checked this for the 8-bit build and P on `multi_turn_base`. The benchmark is BFCL at `6ea5797` with the model entry `Qwen/Qwen3-4B-Instruct-2507-FC`, on three categories: `simple_python` (400 items), `live_simple` (258 items) and `multi_turn_base` (200 tasks). In a multi-turn task, the user speaks in several turns, and the model answers each turn in one or more steps, one generation each.
 
-A typical output, scored as "no function call":
+## 3. What the models write
+
+### Single-turn
+
+P leaves 112 of its 400 `simple_python` calls unclosed. 110 of them are complete, parseable calls apart from the missing tag, so the model stopped after the JSON and not in the middle of it. A typical output, scored as "no function call", looks like this:
 
 ```
 <tool_call>
 {"name": "algebra.quadratic_roots", "arguments": {"a": 1, "b": -3, "c": 2}}
 ```
 
-**Multi-turn** (`multi_turn_base`, 200 tasks). The 8-bit build produces 0 malformed calls in 1827 steps. The public 3-bit build produces 57, spread over 22 tasks. The largest group is a different near miss: the key names go missing (33 steps).
+The 8-bit build, on the same server with the same settings, leaves 0 calls unclosed. On `live_simple`, P leaves 63 of 258 unclosed.
+
+### Multi-turn
+
+The 8-bit build produces 0 malformed calls in 1827 steps. P produces 57, spread over 22 tasks. The largest group is a different near miss, in which the key names go missing (33 steps):
 
 ```
 <tool_call>
@@ -56,15 +64,13 @@ A typical output, scored as "no function call":
 </tool_call>
 ```
 
-The intended call is clear, but it isn't JSON. Another 13 steps are a complete call with no tags at all: the whole output is `{"name": "ls", "arguments": {...}}`, which BFCL reads as plain text. A build calibrated on tool-call dialogues (T) does this more often (38 steps). Calls with the function name as the key, `{"ls": {...}}`, also appear.
+The intended call is clear, but the text is not JSON. Another 13 steps are a complete call with no tags at all. The whole output is `{"name": "ls", "arguments": {...}}`, which BFCL reads as plain text. A build calibrated on tool-call dialogues (T in section 4) does this more often, in 38 steps. Calls that use the function name as the key, such as `{"ls": {...}}`, also appear.
 
-At 2 bits (IQ2_M), the model also starts copying the tool's schema instead of calling it (at least 49 steps; more of the unclosed steps look like schema copies too). It loses 25 whole tasks to the crash path: 22 on a call with a `"name"` but no `"arguments"` (which is what a copied schema looks like), 3 on a missing `"name"`. A crashed task keeps no log, so the output that crashed it isn't recorded; the shapes are inferred from the error messages.
+At 2 bits (IQ2_M), the model also starts copying the tool's schema instead of calling it, in at least 49 steps. More of its unclosed steps look like schema copies too. IQ2_M loses 25 whole tasks to the crash path described in section 1. In 22 of them the call had a `"name"` but no `"arguments"`, which is what a copied schema looks like, and in 3 the `"name"` was missing. A crashed task keeps no log, so the output that crashed it is not recorded and the shapes are inferred from the error messages.
 
-## 3. Official vs tolerant scoring
+## 4. Official and tolerant scores
 
-I re-scored the same saved outputs with a patched evaluator that accepts a final unclosed `<tool_call>` and loose whitespace around the JSON. Nothing else changes: names, argument types and values are still checked by BFCL's own checker.
-
-All builds come from the same 16-bit weights of Qwen3-4B-Instruct-2507. Q8_0 and P are public files (`bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF`, revision `ae44f08`); the others I quantized myself. "Unclosed" counts `simple_python` items.
+I re-scored the saved single-turn outputs with a patched evaluator that accepts a final unclosed `<tool_call>` and loose whitespace around the JSON. Nothing else changes. Names, argument types and values are still checked by BFCL's own checker. "Unclosed" counts `simple_python` items.
 
 | Build | What it is | Unclosed | simple_python official | tolerant | live_simple official | tolerant |
 |---|---|---|---|---|---|---|
@@ -77,55 +83,47 @@ All builds come from the same 16-bit weights of Qwen3-4B-Instruct-2507. Q8_0 and
 | G | as X, chunks of 2048 | 8 | 88.50 | 90.25 | 73.64 | 76.36 |
 | T | as G, plus tool-call dialogues | 11 | 87.00 | 89.50 | 72.09 | 74.42 |
 
-For P on `simple_python`, the tolerant parser turns 101 items into correct answers; it creates no new failures. With all patch options off, the patched evaluator reproduces the official scores and failed entries exactly (23 of 23 build × category combinations).
+For P on `simple_python`, the tolerant parser turns 101 items into correct answers and creates no new failures. With all patch options off, the patched evaluator reproduces the official scores and failed entries exactly, in 23 of 23 build and category combinations.
 
-## 4. The tag depends on the imatrix
+## 5. The tag depends on the imatrix
 
-- **P's imatrix:** P leaves 112 tags unclosed. R uses the same imatrix with a newer quantizer and leaves 134. So the quantizer version isn't the cause; the imatrix is.
-- **The calibration file P's header names** (`calibration_datav3.txt`, the revision I downloaded), run through llama-imatrix myself: 1 unclosed tag with the newer llama.cpp (W) and 1 with b6096 (V), the release the public model card names.
-- **My own general text:** 1 at chunks of 512 (X), 8 at 2048 (G).
+P and R share an imatrix and differ in the quantizer version. P leaves 112 tags unclosed and R leaves 134, so the newer quantizer does not remove the failure. Every build with a different imatrix stays low. W and V use the calibration file that P's header names (`calibration_datav3.txt`, the revision I downloaded), run through llama-imatrix with the newer llama.cpp and with b6096, the release the public model card names. Each leaves 1 tag unclosed. X and G, made from my own general text, leave 1 and 8.
 
-So I couldn't reproduce the failure from the published calibration file, and I couldn't reproduce P's imatrix either. P's header records 497 chunks. The file I used is 65,959 tokens long: 128 chunks at 512 tokens (what W's header records), 515 at 128. No chunk size gives exactly 497 from this file, and the header doesn't store the chunk size. P's imatrix was made from different text, with different settings, or both. I haven't tested other chunk sizes or options on the published file, or other revisions of it. The whole effect also rests on one imatrix file.
+I could not reproduce P's imatrix from the published file. P's header records 497 chunks. The file I used is 65,959 tokens long, which gives 128 chunks at 512 tokens (the count W's header records) and 515 at 128. No chunk size gives exactly 497 from this file, and the header does not store the chunk size. P's imatrix was therefore made from different text, with different settings, or both. I have not tested other chunk sizes or options on the published file, or other revisions of it, and the whole effect rests on a single imatrix.
 
-Low bits are part of it too. Q4_K_M, a public 4-bit build whose header records the same imatrix as P's (same file name, same chunk count), produces 0 malformed steps in multi-turn.
+Low bits are part of the explanation. Q4_K_M, whose header records the same imatrix as P's (same file name, same chunk count), produces 0 malformed steps in multi-turn.
 
-With the tag forgiven, P and R are as good as the other 3-bit builds on `simple_python`. On `live_simple` they score highest of the 3-bit builds, but the gaps are a handful of items with one greedy run each, so I don't read much into the order. On these two categories, most of what separated P from my builds was the closing tag, not the choice of call.
+With the tag tolerated, P and R are as good as the other 3-bit builds on `simple_python`. On `live_simple` they score highest of the 3-bit builds, but the gaps are a handful of items with one greedy run each, so the order means little. On these two categories, most of what separated P from my builds was the closing tag and not the choice of call.
 
-The effect also depends on the task. G leaves 8 tags unclosed on `simple_python`, but 73 in multi-turn steps. P does the reverse: 112 on `simple_python`, 7 in multi-turn. A build that looks clean on one category isn't necessarily clean on another. W, V and X were only run on the single-turn categories.
+The effect also depends on the task. G leaves 8 tags unclosed on `simple_python` but 73 in multi-turn steps. P does the reverse, with 112 on `simple_python` and 7 in multi-turn. A build that looks clean on one category is not necessarily clean on another, and W, V and X were only run on the single-turn categories.
 
-## 5. What the parser does not explain
+## 6. What the parser does not explain
 
-In `multi_turn_base`, the 8-bit build passes 51 of 200 tasks and P passes 22. Of the 32 tasks that 8-bit passes and P fails, 6 contain a malformed call or a crash. That doesn't mean the broken call caused the failure, only that it could have. The other 26 contain no malformed call:
+In `multi_turn_base`, the 8-bit build passes 51 of 200 tasks and P passes 22. Of the 32 tasks that 8-bit passes and P fails, 6 contain a malformed call or a crash. A broken call in a failed task could have caused the failure, but the audit does not show that it did.
 
-- In 11, a turn ends without any call, typically right after the model announces what it is about to do ("Let me do that for you."). That looks like generation ending too early, a relative of the missing tag, but there is no call for a parser to recover.
-- In 12, the calls run but leave the environment in the wrong state.
-- In 3, the calls return the wrong results.
+The other 26 tasks contain no malformed call. In 11 of them, a turn ends without any call, typically right after the model announces what it is about to do ("Let me do that for you."). That looks like generation ending too early, a relative of the missing tag, but there is no call for a parser to recover. In 12, the calls run but leave the environment in the wrong state, and in 3 they return the wrong results. At 2 bits the share with a broken call is larger (16 of 41) but still a minority. The base is small, and 3 tasks go the other way, failing at 8 bits and passing with P.
 
-At 2 bits the share with a broken call is larger (16 of 41), but still a minority. The base is small: 3 tasks go the other way (8-bit fails, P passes).
+Multi-turn outputs also cannot be re-scored after the fact. A call the parser dropped was never executed, so the model never saw its result, and every later turn depends on that. Measuring how much a tolerant parser would recover in multi-turn needs a new generation run with the tolerant parser active, which this note does not include.
 
-Multi-turn outputs also can't be re-scored after the fact. A call the parser dropped was never executed, so the model never saw its result, and every later turn depends on that. Measuring how much a tolerant parser would recover in multi-turn needs a new generation run with the tolerant parser active. I haven't done that here.
+## 7. Limitations
 
-## 6. Objections
+The study covers one model family, with one greedy run per build. Differences between near-identical imatrices would need repeated imatrix runs before they mean much. The tolerant mode accepts only a missing final tag and loose whitespace, and the key repair in the patch (`SILENT_ZERO_REPAIR_KEYS`) matters only in multi-turn, where it needs re-generation.
 
-- **A server or stop-token problem?** The 8-bit build and W ran on the same server with the same settings and leave 0 and 1 tags unclosed.
-- **Truncated outputs?** 110 of the 112 unclosed outputs are complete calls; the model stopped right after the JSON.
-- **A wrong leaderboard number?** No. None of these builds is on the BFCL leaderboard. The point is about anyone who runs BFCL on a quantized build.
-- **A bad public quant?** This is about one imatrix of one model, tested on three categories. It says nothing about the publisher's other models or about their process in general.
+Two objections are worth answering directly. The missing tag is not a server or stop-token problem, because the 8-bit build and W ran on the same server with the same settings and leave 0 and 1 tags unclosed. The outputs are not truncated either, because 110 of the 112 unclosed outputs are complete calls.
 
-## 7. What to do about it
+None of these builds is on the BFCL leaderboard, so no leaderboard number is claimed wrong. The finding concerns anyone who runs BFCL on a quantized build. The failure also comes from one imatrix of one model, tested on three categories, and says nothing about the publisher's other models.
 
-- **Benchmark users:** report malformed calls separately from "no call". The patch in this repo adds a `tool_call_parse` field to every failed entry ("unclosed", "keys_dropped", "schema_echo", a crash message, …) without changing any score.
-- **Benchmark maintainers:** a call without `"name"` or `"arguments"` should not be able to crash a task. Filtering malformed calls out of the chat history prevents the crash shapes inferred above (opt-in `SILENT_ZERO_SAFE_HISTORY` in the patch). This is tested in unit tests, not yet by re-generation.
-- **People using quantized models in agents:** run a short tool-call smoke test before trusting a low-bit build, and check the tags specifically. Grammar-constrained decoding (llama.cpp and vLLM both offer it) prevents syntactically malformed calls, as long as the grammar covers the tags. It doesn't make a wrong call right.
-- **People making quants:** the imatrix can decide format tokens. A few hundred tool-call prompts are a cheap check.
+## 8. Conclusion
 
-## Setup and limits
+This note asked how much of a quantized model's tool-calling score on BFCL reflects the calls it makes, and how much reflects the parser that reads them. The audit covered ten builds of Qwen3-4B-Instruct-2507 step by step, and the single-turn outputs were re-scored with a tolerant parser that leaves BFCL's checks otherwise unchanged.
 
-- **Model:** Qwen3-4B-Instruct-2507, served with llama.cpp `llama-server` (build tag b10964) on Apple Silicon. One slot, greedy decoding, server prompt cache off.
-- **Determinism:** greedy runs reproduced byte-identically across server restarts. I checked this for the 8-bit build and P on `multi_turn_base`.
-- **Benchmark:** BFCL at `6ea5797`, model entry `Qwen/Qwen3-4B-Instruct-2507-FC`.
-- **Limits:**
-  - One model family, one run per build. Differences between near-identical imatrices need repeated imatrix runs before they mean much.
-  - "Tolerant" accepts only a missing final tag and loose whitespace.
-  - Repairing dropped keys (`SILENT_ZERO_REPAIR_KEYS`) only matters in multi-turn and needs re-generation.
-- **Reproduce:** `audit/classify.py` (classification), `audit/imatrix_facts.py` (imatrix headers and chunk counts), `patch/` (patched BFCL, tests, `verify.py`), `writeup/build.py` (this text). Tables: `audit/results.md`.
+The main findings are:
+
+1. Most of the 3-bit loss on `simple_python` is a missing closing tag. 25.3 of 29.8 points come from items whose call is complete apart from `</tool_call>`. A tolerant parser turns 101 such items into correct answers.
+2. Whether the tag goes missing follows the imatrix. P and R share an imatrix and fail, while every build with another imatrix leaves at most 11 tags unclosed. The published calibration file does not reproduce P's imatrix, so its exact origin stays open.
+3. Multi-turn failures are mostly not parsing failures. 26 of 32 new failures contain no malformed call. Whether a tolerant parser would rescue the other 6 can only be measured by re-generation.
+4. Malformed calls can cost whole tasks. At 2 bits, 25 of 200 multi-turn tasks crash on a call without `"name"` or `"arguments"`, and filtering such calls out of the chat history prevents every crash shape inferred here (`SILENT_ZERO_SAFE_HISTORY`, tested in unit tests).
+
+The patch in this repository makes the distinction visible without changing any score. Every failed entry gets a `tool_call_parse` field that names the failure ("unclosed", "keys_dropped", "schema_echo" or a crash message), so a benchmark user can report malformed calls separately from missing ones. Anyone running a low-bit build in an agent can get the same information from a short tool-call smoke test that checks the tags specifically. Grammar-constrained decoding, which llama.cpp and vLLM both offer, prevents syntactically malformed calls as long as the grammar covers the tags, but it does not make a wrong call right. For people making quants, a few hundred tool-call prompts are a cheap check on what the imatrix did to the format tokens.
+
+Several directions follow. A multi-turn run with the tolerant parser active would measure what the parser costs there, where re-scoring cannot. Repeated imatrix runs would show how much of the spread between near-identical builds is noise. Other models and other BFCL handlers parse tool calls differently, so the same audit on them would show how general the missing tag is. Finally, finding the text and settings behind P's imatrix would explain why that one imatrix removes the tag. A missing tag and a missing answer are different failures, and a benchmark should be able to tell them apart.

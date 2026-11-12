@@ -125,6 +125,16 @@ def numbers(audit_dir, verify):
         k = b.lower().replace("iq3_xxs_", "").replace("iq3_xxs", "iq3")
         n[f"{k}_ls_unclosed"] = A[b]["live_simple"]["classes"].get("unclosed", 0)
 
+    n["other_sp_unclosed_max"] = max(A[b]["simple_python"]["classes"].get("unclosed", 0)
+                                     for b in IQ3 if b not in ("IQ3_XXS", "IQ3_XXS_R"))
+
+    # counts that the prose spells out as words
+    words = "zero one two three four five six seven eight nine ten eleven twelve".split()
+    n["n_builds"] = words[len(A)]
+    n["n_iq3"] = words[len(IQ3)]
+    n["n_own"] = words[sum(b.startswith("IQ3_XXS_") for b in A)]
+    n["n_cats"] = words[len({c for b in A for c in A[b]})]
+
     # multi-turn: tasks that go the other way (8-bit fails, public 3-bit passes)
     q8 = A["Q8_0"]["multi_turn_base"]
     n["iq3_mt_reverse"] = len(set(q8["failed_ids"]) & set(m["passed_ids"]))
