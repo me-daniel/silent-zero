@@ -34,6 +34,12 @@ def failed_ids(verify, mode, build, cat):
         return {json.loads(l)["id"] for l in f if l.strip()}
 
 
+def one_decimal(x):
+    """Round half up to one decimal (25.25 -> 25.3), the way a reader would, not float's half-even."""
+    from decimal import ROUND_HALF_UP, Decimal
+    return str(Decimal(repr(round(x, 6))).quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
+
+
 def pct(x):
     return f"{100 * x:.2f}"
 
@@ -52,10 +58,11 @@ def numbers(audit_dir, verify):
         for c, short in (("simple_python", "sp"), ("live_simple", "ls")):
             n[f"{k}_{short}_off"] = pct(off(b, c)["accuracy"])
             n[f"{k}_{short}_tol"] = pct(score_head(verify, "tolerant", b, c)["accuracy"])
+            n[f"{k}_{short}_gain"] = f'{100 * (score_head(verify, "tolerant", b, c)["accuracy"] - off(b, c)["accuracy"]):.2f}'
     tol_sp = [score_head(verify, "tolerant", b, "simple_python")["accuracy"] for b in IQ3]
     n["iq3_sp_tol_min"], n["iq3_sp_tol_max"] = pct(min(tol_sp)), pct(max(tol_sp))
-    n["iq3_sp_parser_points"] = f'{100 * (score_head(verify, "tolerant", "IQ3_XXS", "simple_python")["accuracy"] - off("IQ3_XXS", "simple_python")["accuracy"]):.1f}'
-    n["iq3_sp_total_points"] = f'{100 * (off("Q8_0", "simple_python")["accuracy"] - off("IQ3_XXS", "simple_python")["accuracy"]):.1f}'
+    n["iq3_sp_parser_points"] = one_decimal(100 * (score_head(verify, "tolerant", "IQ3_XXS", "simple_python")["accuracy"] - off("IQ3_XXS", "simple_python")["accuracy"]))
+    n["iq3_sp_total_points"] = one_decimal(100 * (off("Q8_0", "simple_python")["accuracy"] - off("IQ3_XXS", "simple_python")["accuracy"]))
 
     # single-turn classes
     sp = A["IQ3_XXS"]["simple_python"]
@@ -126,6 +133,9 @@ def numbers(audit_dir, verify):
         k = b.lower().replace("iq3_xxs_", "").replace("iq3_xxs", "iq3")
         n[f"{k}_ls_unclosed"] = A[b]["live_simple"]["classes"].get("unclosed", 0)
 
+    gains = [score_head(verify, "tolerant", b, "live_simple")["accuracy"] - off(b, "live_simple")["accuracy"]
+             for b in IQ3 if b not in ("IQ3_XXS", "IQ3_XXS_R")]
+    n["other_ls_gain_max"] = f"{100 * max(gains):.2f}"
     n["other_sp_unclosed_max"] = max(A[b]["simple_python"]["classes"].get("unclosed", 0)
                                      for b in IQ3 if b not in ("IQ3_XXS", "IQ3_XXS_R"))
 

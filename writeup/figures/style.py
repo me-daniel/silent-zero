@@ -1,9 +1,8 @@
 """Shared names, colours, order and fonts for all figures (one script per figure, like fig_*.py here).
 
 Figures are drawn at FIG_W inches and shown at about the text width of the write-up (~46rem), so fonts are
-set close to their on-screen size. Colours follow the Okabe-Ito palette (colour-blind safe). The public
-imatrix (P, R, and the other public builds) is orange, my own imatrices are blue, so the two groups read the
-same way in every figure.
+set close to their on-screen size. Colours follow the Okabe-Ito palette (colour-blind safe), and
+amber always means "closing tag missing". Row labels say what each build is, so a figure reads without the text.
 """
 import json
 import os
@@ -19,41 +18,59 @@ import build  # noqa: E402  (score files and helpers, same source as the text)
 
 FIG_W = 8.0
 
-# label shown in the figures, in display order
-NAMES = {
-    "Q8_0": "Q8_0", "Q4_K_M": "Q4_K_M", "IQ3_XXS": "P", "IQ3_XXS_R": "R", "IQ2_M": "IQ2_M",
-    "IQ3_XXS_W": "W", "IQ3_XXS_V": "V", "IQ3_XXS_X": "X", "IQ3_XXS_G": "G", "IQ3_XXS_T": "T",
+# row labels: what each build is, readable without the text
+LABELS = {
+    "Q8_0": "Q8_0 (8-bit)",
+    "Q4_K_M": "Q4_K_M (4-bit)",
+    "IQ3_XXS": "P (3-bit, public imatrix)",
+    "IQ3_XXS_R": "R (3-bit, public imatrix)",
+    "IQ3_XXS_W": "W (3-bit, public calibration text)",
+    "IQ3_XXS_V": "V (3-bit, public calibration text)",
+    "IQ3_XXS_X": "X (3-bit, my text)",
+    "IQ3_XXS_G": "G (3-bit, my text)",
+    "IQ3_XXS_T": "T (3-bit, my text + tool calls)",
+    "IQ2_M": "IQ2_M (2-bit)",
 }
-ORDER = list(NAMES)
 
 INK = "#1f1f1c"
 MUTED = "#6b6a64"
 RULE = "#d9d6cc"
-PUBLIC = "#d55e00"     # public imatrix
-PUBLIC_LIGHT = "#f2b48a"
-OWN = "#0072b2"        # own imatrices
-OWN_LIGHT = "#9cc7e4"
-REF = "#555555"        # 8-bit reference
 GOOD = "#009e73"
 BAD = "#d55e00"
 WARN = "#e69f00"
+SCORE = "#4d5d6c"      # a BFCL score
+TAG = "#e69f00"        # "closing tag missing", the same colour in every figure
 
-COLOURS = {"Q8_0": REF, "Q4_K_M": PUBLIC, "IQ2_M": PUBLIC, "IQ3_XXS": PUBLIC, "IQ3_XXS_R": PUBLIC}
-COLOURS.update({b: OWN for b in ("IQ3_XXS_W", "IQ3_XXS_V", "IQ3_XXS_X", "IQ3_XXS_G", "IQ3_XXS_T")})
-
-# malformed-call classes in a fixed order and colour (Okabe-Ito, avoiding the two build-group colours)
-CLASSES = [
-    ("unclosed", "unclosed tag", "#e69f00"),
-    ("keys_dropped", "key names dropped", "#009e73"),
-    ("untagged_call", "no tags at all", "#56b4e9"),
-    ("schema_echo", "schema copied", "#cc79a7"),
-    ("bad_json", "other", "#999999"),
-    ("no_name", "no usable name", "#f0e442"),
-    ("bad_name", "no usable name", "#f0e442"),
-    ("bad_args", "other", "#999999"),
-    ("bad_newlines", "other", "#999999"),
-    ("not_object", "other", "#999999"),
+# kinds of malformed step (audit/classify.py classes, grouped), Okabe-Ito
+KINDS = [
+    ("closing tag missing", ["unclosed"], TAG),
+    ("key names missing", ["keys_dropped"], "#009e73"),
+    ("no tags at all", ["untagged_call"], "#56b4e9"),
+    ("tool schema copied", ["schema_echo"], "#cc79a7"),
+    ("other", ["bad_json", "no_name", "bad_name", "bad_args", "bad_newlines", "not_object"], "#b9b7af"),
 ]
+
+
+one_decimal = build.one_decimal  # same rounding as the text
+
+
+def value(ax, x, y, text):
+    """A value label right of a bar, on a white background so grid lines don't cross it."""
+    ax.text(x, y, text, va="center", fontsize=9, color=MUTED, zorder=5,
+            bbox=dict(facecolor="white", edgecolor="none", pad=1.0))
+
+
+def rows(ax, builds):
+    """Horizontal rows top to bottom with the build labels, no y axis line."""
+    ys = list(range(len(builds)))[::-1]
+    ax.set_yticks(ys)
+    ax.set_yticklabels([LABELS[b] for b in builds])
+    ax.set_ylim(-0.6, len(builds) - 0.4)
+    ax.tick_params(axis="y", length=0, labelsize=9.5, labelcolor=INK)
+    ax.spines["left"].set_visible(False)
+    ax.grid(axis="x", color=RULE, lw=0.6)
+    ax.set_axisbelow(True)
+    return ys
 
 
 def setup():
