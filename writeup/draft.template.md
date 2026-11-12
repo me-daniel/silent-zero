@@ -1,6 +1,6 @@
 # Silent Zero: a 3-bit model drops one token, and the benchmark scores it as silence
 
-*Draft. All numbers are filled in by `writeup/build.py` from the audit and re-scoring outputs.*
+*Draft. All numbers are filled in by `writeup/build.py` from the audit and re-scoring outputs, and the figures are drawn from the same files.*
 
 ## Abstract
 
@@ -31,7 +31,11 @@ return result
 
 Anything that does not match is dropped without a trace. That covers an unclosed tag, missing newlines around the JSON and invalid JSON. A single-turn item then fails as `wrong_count` ("Wrong number of functions"), exactly like a model that called nothing. In a multi-turn task the turn ends, and the handler's own log reports "Successfully decoded model response" with an empty list.
 
-A second path is worse. A call that is valid JSON but lacks a usable `"name"` or `"arguments"` key is kept and written into the chat history. When the next prompt is built, the chat template indexes `tool_call["name"]` or `tool_call["arguments"]` and raises an exception. BFCL then records the whole multi-turn task as `inference_error`, including turns the model might have passed.
+A second path is worse. A call that is valid JSON but lacks a usable `"name"` or `"arguments"` key is kept and written into the chat history. When the next prompt is built, the chat template indexes `tool_call["name"]` or `tool_call["arguments"]` and raises an exception. BFCL then records the whole multi-turn task as `inference_error`, including turns the model might have passed. Figure 1 shows the four kinds of output this note deals with and what BFCL does with each.
+
+![Figure 1: what BFCL's parser does with four kinds of model output](figures/generated/fig_1_parser.svg)
+
+*Figure 1. What BFCL's parser does with four kinds of model output.* Kinds 2 to 4 occur in the saved outputs of the low-bit builds (arguments shortened). Dashed and blue: the opt-in modes of the patch (see `patch/README.md`). With all modes off, the patch only adds a label to each failed entry that records what the parser saw.
 
 ## 2. Builds and setup
 
@@ -66,9 +70,15 @@ The intended call is clear, but the text is not JSON. Another {{iq3_mt_untagged}
 
 At 2 bits (IQ2_M), the model also starts copying the tool's schema instead of calling it, in at least {{iq2_m_mt_schema_echo}} steps. More of its unclosed steps look like schema copies too. IQ2_M loses {{iq2_m_mt_crashes}} whole tasks to the crash path described in section 1. In {{iq2_m_mt_crash_args}} of them the call had a `"name"` but no `"arguments"`, which is what a copied schema looks like, and in {{iq2_m_mt_crash_name}} the `"name"` was missing. A crashed task keeps no log, so the output that crashed it is not recorded and the shapes are inferred from the error messages.
 
+Figure 3 (left, in section 6) puts the builds side by side. The mix of malformed steps changes from build to build, even between builds at the same bit width.
+
 ## 4. Official and tolerant scores
 
-I re-scored the saved single-turn outputs with a patched evaluator that accepts a final unclosed `<tool_call>` and loose whitespace around the JSON. Nothing else changes. Names, argument types and values are still checked by BFCL's own checker. "Unclosed" counts `simple_python` items.
+I re-scored the saved single-turn outputs with a patched evaluator that accepts a final unclosed `<tool_call>` and loose whitespace around the JSON. Nothing else changes. Names, argument types and values are still checked by BFCL's own checker. Figure 2 shows the effect per build, and the table below gives the exact numbers. "Unclosed" counts `simple_python` items.
+
+![Figure 2: official and tolerant single-turn scores per build](figures/generated/fig_2_scores.svg)
+
+*Figure 2. With the missing tag tolerated, the builds made with the public imatrix catch up with the other 3-bit builds.* Open circles: BFCL's official score. Filled circles: the same saved outputs re-scored in tolerant mode. Orange: public imatrix (P, R). Blue: my own imatrices. Grey: the 8-bit build. One greedy run per build.
 
 | Build | What it is | Unclosed | simple_python official | tolerant | live_simple official | tolerant |
 |---|---|---|---|---|---|---|
@@ -99,7 +109,11 @@ The effect also depends on the task. G leaves {{g_sp_unclosed}} tags unclosed on
 
 In `multi_turn_base`, the 8-bit build passes {{q8_0_mt_correct}} of {{mt_tasks}} tasks and P passes {{iq3_mt_correct}}. Of the {{iq3_mt_new_fail}} tasks that 8-bit passes and P fails, {{iq3_mt_new_fail_broken}} contain a malformed call or a crash. A broken call in a failed task could have caused the failure, but the audit does not show that it did.
 
-The other {{iq3_mt_clean_fail}} tasks contain no malformed call. In {{iq3_mt_clean_empty}} of them, a turn ends without any call, typically right after the model announces what it is about to do ("Let me do that for you."). That looks like generation ending too early, a relative of the missing tag, but there is no call for a parser to recover. In {{iq3_mt_clean_state}}, the calls run but leave the environment in the wrong state, and in {{iq3_mt_clean_exec}} they return the wrong results. At 2 bits the share with a broken call is larger ({{iq2_m_mt_new_fail_broken}} of {{iq2_m_mt_new_fail}}) but still a minority. The sample is small, and {{iq3_mt_reverse}} tasks go the other way, failing at 8 bits and passing with P.
+The other {{iq3_mt_clean_fail}} tasks contain no malformed call. In {{iq3_mt_clean_empty}} of them, a turn ends without any call, typically right after the model announces what it is about to do ("Let me do that for you."). That looks like generation ending too early, a relative of the missing tag, but there is no call for a parser to recover. In {{iq3_mt_clean_state}}, the calls run but leave the environment in the wrong state, and in {{iq3_mt_clean_exec}} they return the wrong results. At 2 bits the share with a broken call is larger ({{iq2_m_mt_new_fail_broken}} of {{iq2_m_mt_new_fail}}) but still a minority, and the same holds for every build in Figure 3 (right).
+
+![Figure 3: malformed steps and new failures in multi-turn, per build](figures/generated/fig_3_multiturn.svg)
+
+*Figure 3. In multi-turn, the kind of malformed call changes with the build, and most new failures contain none.* Left: malformed steps in `multi_turn_base` ({{mt_tasks}} tasks) by kind, with the number of tasks lost to a crash. Right: the tasks that Q8_0 passes and the build fails. Black marks tasks with a malformed call or a crash, grey the failures a parser cannot fix. Orange labels: builds with the public imatrix. Blue: my own imatrices. The sample is small, and {{iq3_mt_reverse}} tasks go the other way, failing at 8 bits and passing with P.
 
 Multi-turn outputs also cannot be re-scored after the fact. A call the parser dropped was never executed, so the model never saw its result, and every later turn depends on that. Measuring how much a tolerant parser would recover in multi-turn needs a new generation run with the tolerant parser active, which this note does not include.
 
@@ -125,3 +139,7 @@ The main findings are:
 The patch in this repository makes the distinction visible without changing any score. Every failed entry gets a `tool_call_parse` field that records what the parser saw ("unclosed", "keys_dropped", "schema_echo", a crash message, or "ok" when the call was well formed but wrong), so a benchmark user can report malformed calls separately from missing ones. Anyone running a low-bit build in an agent can get the same information from a short tool-call smoke test that checks the tags specifically. Grammar-constrained decoding, which llama.cpp and vLLM both offer, should rule out syntactically malformed calls if the grammar covers the tags. I did not test it, and it cannot make a wrong call right. For people making quantized builds, a few hundred tool-call prompts are a cheap check on what the imatrix did to the format tokens.
 
 Several directions follow. A multi-turn run with the tolerant parser active would measure what the parser costs there, where re-scoring cannot. Repeated imatrix runs would show how much of the spread between near-identical builds is noise. Other models and other BFCL handlers parse tool calls differently, so the same audit on them would show how general the missing tag is. Finally, finding the text and settings behind P's imatrix would explain why that one imatrix removes the tag. A missing tag and a missing answer are different failures, and a benchmark should be able to tell them apart.
+
+## Code and data
+
+The classifier is `audit/classify.py`, and `audit/results.md` has the tables for every build and class. The BFCL patch, its tests and `verify.py` are in `patch/`. `writeup/build.py` turns the outputs into this text, and the scripts in `writeup/figures/` draw the figures.
