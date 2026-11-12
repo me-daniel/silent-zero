@@ -1,0 +1,414 @@
+diff --git a/berkeley-function-call-leaderboard/bfcl_eval/_llm_response_generation.py b/berkeley-function-call-leaderboard/bfcl_eval/_llm_response_generation.py
+index 8997958..a78ea16 100644
+--- a/berkeley-function-call-leaderboard/bfcl_eval/_llm_response_generation.py
++++ b/berkeley-function-call-leaderboard/bfcl_eval/_llm_response_generation.py
+@@ -216,6 +216,10 @@ def multi_threaded_inference(handler, test_case, include_input_log, exclude_stat
+         "result": result,
+         **metadata,
+     }
++    from bfcl_eval.model_handler.local_inference.tool_call_parsing import active_modes
++
++    if active_modes():  # silent-zero: which opt-in parsing modes produced this result
++        result_to_write["silent_zero_modes"] = sorted(active_modes())
+ 
+     return result_to_write
+ 
+diff --git a/berkeley-function-call-leaderboard/bfcl_eval/eval_checker/eval_runner.py b/berkeley-function-call-leaderboard/bfcl_eval/eval_checker/eval_runner.py
+index 2d5c41a..3dabac7 100644
+--- a/berkeley-function-call-leaderboard/bfcl_eval/eval_checker/eval_runner.py
++++ b/berkeley-function-call-leaderboard/bfcl_eval/eval_checker/eval_runner.py
+@@ -33,6 +33,34 @@ def get_handler(model_name: str) -> BaseHandler:
+     return handler
+ 
+ 
++def _attach_tool_call_diagnosis(handler, entry_result, raw_result):
++    """silent-zero: add why the stored output did or did not yield calls. Never changes "valid"."""
++    diagnose = getattr(handler, "diagnose_tool_calls", None)
++    if diagnose is None:
++        return
++    try:
++        d = diagnose(raw_result)
++    except Exception as e:  # diagnostics must never break evaluation
++        d = {"diagnosis_error": str(e)}
++    if d is not None:
++        entry_result["tool_call_parse"] = d
++
++
++def _check_multi_turn_parser_modes(model_result_entry):
++    """silent-zero: a multi-turn result must be scored with the modes it was generated with, because the modes
++    decided which calls were executed during generation (all three change how decode_execute reads a step)."""
++    from bfcl_eval.model_handler.local_inference.tool_call_parsing import GUARDED_MODES, active_modes
++
++    generated = set(model_result_entry.get("silent_zero_modes", [])) & GUARDED_MODES
++    now = set(active_modes()) & GUARDED_MODES
++    if generated != now:
++        raise ValueError(
++            f"{model_result_entry.get('id')}: generated with silent-zero modes {sorted(generated) or 'none'}, "
++            f"evaluated with {sorted(now) or 'none'}. Multi-turn results must be evaluated with the modes they "
++            "were generated with (SILENT_ZERO_SAFE_HISTORY, SILENT_ZERO_TOLERANT, SILENT_ZERO_REPAIR_KEYS)."
++        )
++
++
+ def _subset_entries_by_model_ids(
+     model_result_entries: list[dict],
+     prompt_entries: list[dict],
+@@ -516,6 +544,7 @@ def agentic_runner(
+     for i in range(len(model_result)):
+         index = model_result[i]["id"]
+         model_result_list = model_result[i]["result"]
++        _check_multi_turn_parser_modes(model_result[i])
+         possible_answer_item = possible_answer[i]["ground_truth"]
+         test_entry = prompt[i]
+ 
+@@ -560,6 +589,7 @@ def multi_turn_runner(
+         multi_turn_model_result_list = model_result[i]["result"]
+         multi_turn_ground_truth_list = possible_answer[i]["ground_truth"]
+         test_entry = prompt[i]
++        _check_multi_turn_parser_modes(model_result[i])
+ 
+         entry_result = _evaluate_single_multi_turn_entry(
+             handler,
+@@ -575,6 +605,7 @@ def multi_turn_runner(
+             correct_count += 1
+         else:
+             entry_result["inference_log"] = model_result[i].get("inference_log", "")
++            _attach_tool_call_diagnosis(handler, entry_result, multi_turn_model_result_list)
+             result.append(entry_result)
+ 
+     return save_eval_results(
+@@ -603,6 +634,7 @@ def relevance_file_runner(
+         if entry_result["valid"]:
+             correct_count += 1
+         else:
++            _attach_tool_call_diagnosis(handler, entry_result, model_result_item)
+             result.append(entry_result)
+ 
+     return save_eval_results(
+@@ -657,6 +689,7 @@ def ast_file_runner(
+         if entry_result["valid"]:
+             correct_count += 1
+         else:
++            _attach_tool_call_diagnosis(handler, entry_result, model_result_item)
+             result.append(entry_result)
+ 
+     return save_eval_results(
+diff --git a/berkeley-function-call-leaderboard/bfcl_eval/model_handler/base_handler.py b/berkeley-function-call-leaderboard/bfcl_eval/model_handler/base_handler.py
+index a1025e9..00b01ef 100644
+--- a/berkeley-function-call-leaderboard/bfcl_eval/model_handler/base_handler.py
++++ b/berkeley-function-call-leaderboard/bfcl_eval/model_handler/base_handler.py
+@@ -254,6 +254,8 @@ class BaseHandler:
+                 }
+                 if reasoning_content:
+                     log_entry["reasoning_content"] = reasoning_content
++                if "tool_call_parse" in model_response_data:  # silent-zero diagnostics
++                    log_entry["tool_call_parse"] = model_response_data["tool_call_parse"]
+ 
+                 current_step_inference_log.append(log_entry)
+ 
+@@ -545,6 +547,8 @@ class BaseHandler:
+                 }
+                 if reasoning_content:
+                     log_entry["reasoning_content"] = reasoning_content
++                if "tool_call_parse" in model_response_data:  # silent-zero diagnostics
++                    log_entry["tool_call_parse"] = model_response_data["tool_call_parse"]
+ 
+                 current_step_inference_log.append(log_entry)
+ 
+diff --git a/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/qwen_fc.py b/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/qwen_fc.py
+index 0af3a28..c44aa2d 100644
+--- a/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/qwen_fc.py
++++ b/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/qwen_fc.py
+@@ -2,6 +2,7 @@ import json
+ import re
+ from typing import Any
+ 
++from bfcl_eval.model_handler.local_inference import tool_call_parsing
+ from bfcl_eval.model_handler.local_inference.base_oss_handler import OSSHandler
+ from bfcl_eval.model_handler.utils import convert_to_function_call
+ from overrides import override
+@@ -38,9 +39,12 @@ class QwenFCHandler(OSSHandler):
+         if type(tool_calls) != list or any(type(item) != dict for item in tool_calls):
+             raise ValueError(f"Model did not return a list of function calls: {result}")
+         decoded_result = []
++        safe = "safe_history" in tool_call_parsing.active_modes()
+         for item in tool_calls:
+             if type(item) == str:
+                 item = eval(item)
++            if safe and not tool_call_parsing.well_formed(item):
++                continue  # silent-zero: skip instead of KeyError
+             decoded_result.append({item["name"]: item["arguments"]})
+         return convert_to_function_call(decoded_result)
+ 
+@@ -250,6 +254,9 @@ class QwenFCHandler(OSSHandler):
+     def _parse_query_response_prompting(self, api_response: Any) -> dict:
+         model_response = api_response.choices[0].text
+         extracted_tool_calls = self._extract_tool_calls(model_response)
++        if "safe_history" in tool_call_parsing.active_modes():
++            # silent-zero: a call without "name" or dict "arguments" in the history crashes _format_prompt
++            extracted_tool_calls = [c for c in extracted_tool_calls if tool_call_parsing.well_formed(c)]
+ 
+         reasoning_content = ""
+         cleaned_response = model_response
+@@ -273,7 +280,9 @@ class QwenFCHandler(OSSHandler):
+             
+         model_responses_message_for_chat_history["reasoning_content"] = reasoning_content
+ 
++        cls, flags = tool_call_parsing.classify(cleaned_response)
+         return {
++            "tool_call_parse": {"class": cls, "flags": flags},
+             "model_responses": cleaned_response,
+             "reasoning_content": reasoning_content,
+             "model_responses_message_for_chat_history": model_responses_message_for_chat_history,
+@@ -292,15 +301,10 @@ class QwenFCHandler(OSSHandler):
+ 
+     @staticmethod
+     def _extract_tool_calls(input_string):
+-        pattern = r"<tool_call>\n(.*?)\n</tool_call>"
+-        matches = re.findall(pattern, input_string, re.DOTALL)
+-
+-        # Process matches into a list of dictionaries
+-        result = []
+-        for match in matches:
+-            try:
+-                match = json.loads(match)
+-                result.append(match)
+-            except Exception as e:
+-                pass
+-        return result
++        # silent-zero: identical to upstream unless SILENT_ZERO_TOLERANT / SILENT_ZERO_REPAIR_KEYS is set
++        return tool_call_parsing.extract_tool_calls(input_string)
++
++    @staticmethod
++    def diagnose_tool_calls(result):
++        """silent-zero: why a stored model result did or did not yield calls (see tool_call_parsing.classify)."""
++        return tool_call_parsing.diagnose(result)
+diff --git a/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/tool_call_parsing.py b/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/tool_call_parsing.py
+new file mode 100644
+index 0000000..d541374
+--- /dev/null
++++ b/berkeley-function-call-leaderboard/bfcl_eval/model_handler/local_inference/tool_call_parsing.py
+@@ -0,0 +1,224 @@
++"""Tool-call parsing for <tool_call>-style handlers, with diagnostics and opt-in alternatives (silent-zero patch).
++
++With no environment variable set, `extract_tool_calls` returns exactly what QwenFCHandler._extract_tool_calls
++returned at upstream commit 6ea5797, so official scores do not change.
++
++Opt-in modes (set the variable to 1, true, yes or on):
++    SILENT_ZERO_SAFE_HISTORY  only well-formed calls (string "name", object "arguments", no "function" key)
++                              enter the chat history and are decoded for execution; others are skipped.
++                              Prevents the crashes in _format_prompt that turn a whole multi-turn task into an
++                              inference_error.
++    SILENT_ZERO_TOLERANT      also accept a final unclosed <tool_call> block and loose whitespace around the
++                              JSON. Changes scores: report separately.
++    SILENT_ZERO_REPAIR_KEYS   also repair {"fn", "arguments": {...}} and {"fn", {...}} into
++                              {"name": "fn", "arguments": {...}}. Guesses structure: report separately.
++
++Multi-turn results must be evaluated with the same modes they were generated with, because the modes decide
++which calls were executed during generation (enforced in eval_runner).
++"""
++import json
++import os
++import re
++
++ENV = {
++    "safe_history": "SILENT_ZERO_SAFE_HISTORY",
++    "tolerant": "SILENT_ZERO_TOLERANT",
++    "repair_keys": "SILENT_ZERO_REPAIR_KEYS",
++}
++PARSER_MODES = frozenset({"tolerant", "repair_keys"})  # modes that change which calls are read
++GUARDED_MODES = frozenset(ENV)  # modes that change multi-turn decoding; generation and evaluation must match
++TRUE = {"1", "true", "yes", "on"}
++
++OPEN, CLOSE = "<tool_call>", "</tool_call>"
++OFFICIAL = re.compile(r"<tool_call>\n(.*?)\n</tool_call>", re.DOTALL)  # upstream's pattern, unchanged
++KEYS_DROPPED = re.compile(r'^\{\s*"([^"]+)"\s*,\s*(\{|"arguments"\s*:)')
++SCHEMA_ECHO = re.compile(r'^\{\s*"name"\s*:\s*"[^"]*"\s*,\s*"(description|parameters)"\s*:')
++NAME_START = re.compile(r'\{\s*"name"\s*:')
++
++CLASSES = ("ok", "text", "untagged_call", "unclosed", "bad_newlines", "keys_dropped", "schema_echo", "bad_json",
++           "no_name", "bad_name", "bad_args", "not_object")
++
++
++def active_modes():
++    return frozenset(m for m, var in ENV.items() if os.environ.get(var, "").strip().lower() in TRUE)
++
++
++def official_blocks(text):
++    """Same result as OFFICIAL.findall(text), in linear time. The pattern is a literal opener, a lazy DOTALL
++    group and a literal closer, so the first closer after each opener ends the match; if no closer follows an
++    opener, no later opener can match either."""
++    out, pos = [], 0
++    while True:
++        i = text.find("<tool_call>\n", pos)
++        if i < 0:
++            return out
++        j = text.find("\n</tool_call>", i + 12)
++        if j < 0:
++            return out
++        out.append(text[i + 12:j])
++        pos = j + 13
++
++
++def well_formed(o):
++    """A call the chat template and the executor can use: string name, object arguments, no "function" key."""
++    return (isinstance(o, dict) and isinstance(o.get("name"), str) and o["name"] != ""
++            and isinstance(o.get("arguments"), dict) and "function" not in o)
++
++
++def _loads(blob):
++    try:
++        return True, json.loads(blob)
++    except Exception:
++        return False, None
++
++
++def _no_duplicate_keys(pairs):
++    keys = [k for k, _ in pairs]
++    if len(keys) != len(set(keys)):
++        raise ValueError("duplicate key")
++    return dict(pairs)
++
++
++def loose_blocks(text):
++    """Split at every opener, so no block crosses another opener. Returns (closed blocks, final unclosed block
++    or None). Linear time; whitespace around each block is stripped."""
++    parts = text.split(OPEN)[1:]
++    closed, final = [], None
++    for i, seg in enumerate(parts):
++        j = seg.find(CLOSE)
++        if j >= 0:
++            closed.append(seg[:j].strip())
++        elif i == len(parts) - 1:
++            final = seg.strip()
++    return closed, final
++
++
++def repair_keys(blob):
++    """{"fn", "arguments": {...}} or {"fn", {...}} -> {"name": "fn", "arguments": {...}}, else None.
++    The result must have exactly the keys name and arguments, with no duplicate keys anywhere."""
++    blob = blob.strip()
++    m = KEYS_DROPPED.match(blob)
++    if not m or m.group(1) in ("name", "arguments"):
++        return None
++    rest = blob[m.end(1) + 1:].lstrip()[1:].lstrip()  # after the name string and its comma
++    fixed = '{"name": ' + json.dumps(m.group(1)) + ", " + (rest if m.group(2) != "{" else '"arguments": ' + rest)
++    try:
++        o = json.loads(fixed, object_pairs_hook=_no_duplicate_keys)
++    except Exception:
++        return None
++    return o if well_formed(o) and set(o) == {"name", "arguments"} else None
++
++
++def official_calls(text):
++    """Exactly QwenFCHandler._extract_tool_calls at 6ea5797: every strict match that parses as JSON."""
++    out = []
++    for m in official_blocks(text):
++        ok, o = _loads(m)
++        if ok:
++            out.append(o)
++    return out
++
++
++def extract_tool_calls(text, modes=None):
++    modes = active_modes() if modes is None else modes
++    if not (modes & PARSER_MODES):
++        return official_calls(text)
++    if "tolerant" in modes:
++        closed, final = loose_blocks(text)
++        blobs = closed + ([final] if final is not None else [])
++    else:
++        blobs = official_blocks(text)
++    out = []
++    for b in blobs:
++        ok, o = _loads(b)
++        if ok:
++            out.append(o)
++        elif "repair_keys" in modes:
++            r = repair_keys(b)
++            if r is not None:
++                out.append(r)
++    return out
++
++
++def untagged_call(text):
++    """True if the text holds a well-formed call object outside any <tool_call> tags. Tries at most the first
++    20 '{"name":' positions, so degenerate input stays cheap."""
++    dec = json.JSONDecoder()
++    for k, m in enumerate(NAME_START.finditer(text)):
++        if k >= 20:
++            return False
++        try:
++            o, _ = dec.raw_decode(text, m.start())
++        except (ValueError, RecursionError):
++            continue
++        if well_formed(o):
++            return True
++    return False
++
++
++def _json_issue(blob):
++    blob = blob.strip()
++    ok, o = _loads(blob)
++    if not ok:
++        if KEYS_DROPPED.match(blob):
++            return "keys_dropped"
++        if SCHEMA_ECHO.match(blob):
++            return "schema_echo"
++        return "bad_json"
++    if not isinstance(o, dict):
++        return "not_object"
++    if "name" not in o:
++        return "no_name"
++    if not isinstance(o.get("arguments"), dict):
++        return "schema_echo" if ("description" in o or "parameters" in o) else "bad_args"
++    if not isinstance(o["name"], str) or o["name"] == "" or "function" in o:
++        return "bad_name"
++    return None
++
++
++def classify(text):
++    """(class, flags) for one model output, relative to the official parser. Same rules as audit/classify.py."""
++    text = text if isinstance(text, str) else json.dumps(text)
++    flags = []
++    n_open = text.count(OPEN)
++    if n_open == 0:
++        return ("untagged_call" if untagged_call(text) else "text"), flags
++    calls = official_calls(text)
++    if calls and all(well_formed(c) for c in calls):
++        if len(calls) < n_open:
++            flags.append("partial_drop")
++        return "ok", flags
++    if not calls and [c for c in extract_tool_calls(text, frozenset({"tolerant"})) if well_formed(c)]:
++        flags.append("recoverable")
++    for c in calls:
++        issue = _json_issue(json.dumps(c))
++        if issue:
++            return issue, flags
++    for m in official_blocks(text):
++        issue = _json_issue(m)
++        if issue in ("bad_json", "keys_dropped", "schema_echo"):
++            return issue, flags
++    if n_open > text.count(CLOSE):
++        return "unclosed", flags
++    closed, _ = loose_blocks(text)
++    for b in closed:
++        issue = _json_issue(b)
++        return ("bad_newlines" if issue is None else issue), flags
++    return "bad_json", flags
++
++
++def diagnose(result):
++    """Diagnosis for a score-file entry: one output string, a multi-turn list of lists, or an error string."""
++    if isinstance(result, str):
++        if result.startswith("Error during inference:"):
++            return {"crash": result}
++        c, fl = classify(result)
++        return {"class": c, "flags": fl}
++    if isinstance(result, list):
++        counts = {}
++        for turn in result:
++            for step in turn if isinstance(turn, list) else [turn]:
++                c, _ = classify(step)
++                counts[c] = counts.get(c, 0) + 1
++        return {"step_classes": counts}
++    return None
