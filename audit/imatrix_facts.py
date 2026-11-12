@@ -4,9 +4,14 @@
         public=<public IQ3_XXS.gguf> W=<own IQ3_XXS_W.gguf> ...
 
 Needs the `gguf` package (llama.cpp's gguf-py, or `pip install gguf`). Writes {label: {key: value}} for the
-quantize.imatrix.* keys; chunks_count x chunk size is the number of calibration tokens the imatrix saw.
+quantize.imatrix.* keys. The header stores the chunk count but not the chunk size.
+
+With --calib FILE --tokenizer tokenizer.json, also writes "calibration_file": the file's token count and
+the chunk count llama-imatrix would get from it at several chunk sizes (tokens // size), to compare with
+the chunk counts in the headers.
 """
 import argparse
+import hashlib
 import os
 import json
 
@@ -26,9 +31,17 @@ def imatrix_meta(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
+    ap.add_argument("--calib", help="calibration text file to count")
+    ap.add_argument("--tokenizer", help="tokenizer.json of the model (needs the tokenizers package)")
     ap.add_argument("builds", nargs="+", help="label=path.gguf")
     a = ap.parse_args()
     res = {}
+    if a.calib:
+        from tokenizers import Tokenizer
+        raw = open(a.calib, "rb").read()
+        n = len(Tokenizer.from_file(a.tokenizer).encode(raw.decode("utf-8"), add_special_tokens=False).ids)
+        res["calibration_file"] = {"name": os.path.basename(a.calib), "sha256": hashlib.sha256(raw).hexdigest(),
+                                   "tokens": n, "chunks_at": {str(c): n // c for c in (128, 256, 512, 1024)}}
     for b in a.builds:
         label, path = b.split("=", 1)
         meta = imatrix_meta(path)

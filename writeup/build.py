@@ -27,6 +27,13 @@ def score_head(verify, mode, build, cat):
         return json.loads(f.readline())
 
 
+def failed_ids(verify, mode, build, cat):
+    p = os.path.join(verify, mode, build, cat, "score", MODEL_DIR, SUB[cat], f"BFCL_v4_{cat}_score.json")
+    with open(p) as f:
+        next(f)
+        return {json.loads(l)["id"] for l in f if l.strip()}
+
+
 def pct(x):
     return f"{100 * x:.2f}"
 
@@ -99,7 +106,28 @@ def numbers(audit_dir, verify):
     im = json.load(open(os.path.join(audit_dir, "imatrix.json")))
     n["imatrix_public_chunks"] = im["public"]["chunks_count"]
     n["imatrix_w_chunks"] = im["W"]["chunks_count"]
-    n["imatrix_ratio"] = f'{im["public"]["chunks_count"] / im["W"]["chunks_count"]:.1f}'
+    n["calib_tokens"] = f'{im["calibration_file"]["tokens"]:,}'
+    n["calib_chunks_512"] = im["calibration_file"]["chunks_at"]["512"]
+    n["calib_chunks_128"] = im["calibration_file"]["chunks_at"]["128"]
+    assert im["calibration_file"]["name"] == im["public"]["dataset"] == im["W"]["dataset"]
+    assert im["W"]["chunks_count"] == im["calibration_file"]["chunks_at"]["512"]  # our run matches the count
+    shared = [b for b in ("Q4_K_M", "IQ2_M", "R") if im[b]["chunks_count"] == im["public"]["chunks_count"]]
+    assert shared == ["Q4_K_M", "IQ2_M", "R"], shared  # same imatrix file name and chunk count as P
+    tok = im["calibration_file"]["tokens"]  # "no chunk size gives exactly <public chunks>" from this file
+    assert all(tok // c != im["public"]["chunks_count"] for c in range(1, tok + 1))
+
+    # single-turn: items the tolerant parser turns into correct answers
+    tol_ok = score_head(verify, "tolerant", "IQ3_XXS", "simple_python")["correct_count"]
+    n["iq3_sp_tol_gain_items"] = tol_ok - off("IQ3_XXS", "simple_python")["correct_count"]
+    for b in IQ3:  # "it creates no new failures": tolerant failures are a subset of default failures
+        assert failed_ids(verify, "tolerant", b, "simple_python") <= failed_ids(verify, "default", b, "simple_python"), b
+    for b in IQ3:
+        k = b.lower().replace("iq3_xxs_", "").replace("iq3_xxs", "iq3")
+        n[f"{k}_ls_unclosed"] = A[b]["live_simple"]["classes"].get("unclosed", 0)
+
+    # multi-turn: tasks that go the other way (8-bit fails, public 3-bit passes)
+    q8 = A["Q8_0"]["multi_turn_base"]
+    n["iq3_mt_reverse"] = len(set(q8["failed_ids"]) & set(m["passed_ids"]))
 
     # default re-scoring check: lines of patch/verify.py's default run, saved to <verify>/default.txt
     lines = [l for l in open(os.path.join(verify, "default.txt")) if l[:4] in ("ok  ", "FAIL")]
