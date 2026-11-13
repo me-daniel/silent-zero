@@ -44,8 +44,8 @@ def main():
             if v:
                 ax.barh(y, v, left=x, color=col, height=0.6, edgecolor="white", lw=0.6)
                 x += v
-        S.value(ax, x + 0.6, y, f"{len(broken)} of {len(new)} with a malformed call", b)
-    ax.set_xlim(0, 64)
+        S.value(ax, x + 0.6, y, f"{len(broken)} of {len(new)} with a malformed call or crash", b)
+    ax.set_xlim(0, 70)
     ax.set_xlabel("tasks that Q8_0 passes and this build fails")
     h = [plt.Rectangle((0, 0), 1, 1, color=col) for _, _, col in CAUSES]
     ax.legend(h, [k for k, _, _ in CAUSES], loc="upper center", bbox_to_anchor=(0.4, -0.24), ncol=3,

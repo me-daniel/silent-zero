@@ -6,11 +6,13 @@ Inputs (git-ignored, produced by the repo's own scripts):
     <audit>/audit.json, <audit>/paired.json        python -I audit/classify.py --raw <outputs> --out <audit> <builds>
     <verify>/<mode>/<build>/<cat>/score/...         .venv/bin/python patch/verify.py --raw <outputs> --out <verify> ...
     <verify>/default.txt                            the printed output of the default verify.py run
+    <raw>/replay_<build>.jsonl                      next-token probabilities at chosen prefixes (local replay)
     <audit>/imatrix.json                            audit/imatrix_facts.py on the public, W and other builds
 Placeholders are {{name}}; an unknown name is an error, so the text cannot silently drift from the data.
 """
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -60,7 +62,7 @@ def pct(x):
     return f"{100 * x:.2f}"
 
 
-def numbers(audit_dir, verify):
+def numbers(audit_dir, verify, raw):
     A = json.load(open(os.path.join(audit_dir, "audit.json")))
     PR = json.load(open(os.path.join(audit_dir, "paired.json")))
     n = {}
@@ -74,7 +76,7 @@ def numbers(audit_dir, verify):
         for c, short in (("simple_python", "sp"), ("live_simple", "ls")):
             n[f"{k}_{short}_off"] = pct(off(b, c)["accuracy"])
             n[f"{k}_{short}_tol"] = pct(score_head(verify, "tolerant", b, c)["accuracy"])
-            n[f"{k}_{short}_gain"] = f'{100 * (score_head(verify, "tolerant", b, c)["accuracy"] - off(b, c)["accuracy"]):.2f}'
+            n[f"{k}_{short}_gain"] = f'{float(n[f"{k}_{short}_tol"]) - float(n[f"{k}_{short}_off"]):.2f}'
     tol_sp = [score_head(verify, "tolerant", b, "simple_python")["accuracy"] for b in IQ3]
     n["iq3_sp_tol_min"], n["iq3_sp_tol_max"] = pct(min(tol_sp)), pct(max(tol_sp))
     n["iq3_sp_parser_points"] = one_decimal(100 * (score_head(verify, "tolerant", "IQ3_XXS", "simple_python")["accuracy"] - off("IQ3_XXS", "simple_python")["accuracy"]))
@@ -158,9 +160,9 @@ def numbers(audit_dir, verify):
         k = b.lower().replace("iq3_xxs_", "").replace("iq3_xxs", "iq3")
         n[f"{k}_ls_unclosed"] = A[b]["live_simple"]["classes"].get("unclosed", 0)
 
-    gains = [score_head(verify, "tolerant", b, "live_simple")["accuracy"] - off(b, "live_simple")["accuracy"]
-             for b in IQ3 if b not in ("IQ3_XXS", "IQ3_XXS_R")]
-    n["other_ls_gain_max"] = f"{100 * max(gains):.2f}"
+    gains = [float(pct(score_head(verify, "tolerant", b, "live_simple")["accuracy"]))
+             - float(pct(off(b, "live_simple")["accuracy"])) for b in IQ3 if b not in ("IQ3_XXS", "IQ3_XXS_R")]
+    n["other_ls_gain_max"] = f"{max(gains):.2f}"  # from the displayed scores, so it can be recomputed
     n["other_sp_unclosed_max"] = max(A[b]["simple_python"]["classes"].get("unclosed", 0)
                                      for b in IQ3 if b not in ("IQ3_XXS", "IQ3_XXS_R"))
 
@@ -181,6 +183,52 @@ def numbers(audit_dir, verify):
     n["verify_identical"] = sum(l.startswith("ok") for l in lines)
     assert n["verify_identical"] == n["verify_combos"], "the text says the default mode reproduces scores exactly"
 
+    # multi-turn: crashes, a noise floor, and what passes
+    q8 = A["Q8_0"]["multi_turn_base"]
+    q8_pass, q8_fail = set(q8["passed_ids"]), set(q8["failed_ids"])
+    i2m = A["IQ2_M"]["multi_turn_base"]
+    n["iq2_m_mt_crash_q8pass"] = len({c["id"] for c in i2m["crashed_tasks"]} & q8_pass)
+    mt3 = [b for b in IQ3 if "multi_turn_base" in A[b]]
+    crashes3 = [len(A[b]["multi_turn_base"]["crashed_tasks"]) for b in mt3]
+    n["iq3_mt_crash_min"], n["iq3_mt_crash_max"] = min(crashes3), max(crashes3)
+    q4 = A["Q4_K_M"]["multi_turn_base"]
+    assert sum(q4["classes"].get(c, 0) for c in malformed) == 0 and not q4["crashed_tasks"]  # "no malformed call"
+    n["q4_k_m_mt_new_fail"] = len(q8_pass & set(q4["failed_ids"]))
+    n["q4_k_m_mt_reverse"] = len(q8_fail & set(q4["passed_ids"]))
+    assert n["q4_k_m_mt_new_fail"] == PR["Q4_K_M"]["new_failures"]
+    for b, d in A.items():  # "no task with a malformed step or a crash passes, for any build"
+        if "multi_turn_base" in d:
+            m_ = d["multi_turn_base"]
+            assert not set(m_["malformed_or_crash_ids"]) & set(m_["passed_ids"]), b
+    n["iq2_m_mt_unclosed"] = i2m["classes"].get("unclosed", 0)
+    n["iq2_m_mt_unclosed_schema"] = i2m["unclosed_schema_like"]
+    assert 2 * n["iq2_m_mt_unclosed_schema"] > n["iq2_m_mt_unclosed"], "text: most of them start like a schema copy"
+    # coverage, as the text states it
+    cover = {b: set(d) for b, d in A.items()}
+    assert {b for b, c in cover.items() if c == {"multi_turn_base"}} == {"Q4_K_M", "IQ2_M"}
+    assert {b for b, c in cover.items() if "multi_turn_base" not in c} == {"IQ3_XXS_W", "IQ3_XXS_V", "IQ3_XXS_X"}
+    n["n_combos"] = sum(len(c) for c in cover.values())
+
+    # replay: next-token probabilities after the JSON of unclosed simple_python outputs (prefix ends in "}}\n")
+    EOT, CLOSE_ID = 151645, 151658  # <|im_end|> and </tool_call> in Qwen3's vocabulary
+    rep_ = {b: [json.loads(l) for l in open(os.path.join(raw, f"replay_{b}.jsonl"))] for b in ("IQ3_XXS", "Q8_0")}
+    # the replay took the first ten unclosed items; those cut after "}}\n" miss exactly the one token
+    sp3 = [r for r in rep_["IQ3_XXS"] if r["kind"] == "sp_unclosed" and r["continuation_tail"].endswith("}}\n")]
+    sp8 = [r for r in rep_["Q8_0"] if r["kind"] == "sp_unclosed" and r["continuation_tail"].endswith("}}\n")]
+    assert [r["id"] for r in sp3] == [r["id"] for r in sp8]
+    n["rep_all"] = sum(r["kind"] == "sp_unclosed" for r in rep_["IQ3_XXS"])
+    n["rep_n"] = len(sp3)
+    n["rep_eot_first"] = sum(r["top10"][0]["id"] == EOT for r in sp3)
+    pc = sorted(next((math.exp(t["logprob"]) for t in r["top10"] if t["id"] == CLOSE_ID), 0.0) for r in sp3)
+    n["rep_close_p_median"] = f"{(pc[len(pc) // 2 - 1] + pc[len(pc) // 2]) / 2:.2f}"
+    n["rep_q8_close_first"] = sum(r["top10"][0]["id"] == CLOSE_ID for r in sp8)
+    assert n["rep_eot_first"] == n["rep_q8_close_first"] == n["rep_n"], "text: 'at every one of them', 'every time'"
+    an3 = [r for r in rep_["IQ3_XXS"] if r["kind"] == "mt_announce_stop"]
+    an8 = [r for r in rep_["Q8_0"] if r["kind"] == "mt_announce_stop"]
+    n["rep_announce_n"] = len(an3)
+    n["rep_announce_eot_iq3"] = sum(r["top10"][0]["id"] == EOT for r in an3)
+    n["rep_announce_eot_q8"] = sum(r["top10"][0]["id"] == EOT for r in an8)
+
     # further statements the text makes
     i2 = A["IQ2_M"]["multi_turn_base"]["crashed_tasks"]
     assert n["iq2_m_mt_crash_args"] + n["iq2_m_mt_crash_name"] == len(i2), "crash split must cover all crashes"
@@ -196,8 +244,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--audit", default="data/audit")
     ap.add_argument("--verify", default="data/verify")
+    ap.add_argument("--raw", default="data/raw", help="raw outputs, for the replay_<build>.jsonl files")
     a = ap.parse_args()
-    n = numbers(a.audit, a.verify)
+    n = numbers(a.audit, a.verify, a.raw)
     t = open(os.path.join(HERE, "draft.template.md")).read()
     used = set(re.findall(r"\{\{(\w+)\}\}", t))
     unknown = used - set(n)

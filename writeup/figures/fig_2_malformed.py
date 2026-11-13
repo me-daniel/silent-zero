@@ -33,9 +33,9 @@ def main():
             if v:
                 ax.barh(y, v, left=x, color=col, height=0.6, edgecolor="white", lw=0.6)
                 x += v
-        S.value(ax, x + 1.5, y, str(x), b)
+        S.value(ax, x + 1.5, y, f"{x} of {A[b]['multi_turn_base']['steps']:,} steps", b)
         xmax = max(xmax, x)
-    ax.set_xlim(0, xmax * 1.1)
+    ax.set_xlim(0, xmax * 1.35)
     ax.set_xlabel(f"malformed steps in multi_turn_base ({A['Q8_0']['multi_turn_base']['tasks']} tasks)")
     h = [plt.Rectangle((0, 0), 1, 1, color=col) for _, _, col in S.KINDS]
     ax.legend(h, [k for k, _, _ in S.KINDS], loc="upper center", bbox_to_anchor=(0.4, -0.22), ncol=5,

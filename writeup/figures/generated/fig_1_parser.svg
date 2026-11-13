@@ -78,7 +78,7 @@ Q 275.76 131.04 275.76 136.8
 L 275.76 167.04 
 Q 275.76 172.8 281.52 172.8 
 z
-" clip-path="url(#p6816db068d)" style="fill: #ffffff; stroke: #d55e00; stroke-width: 1.6; stroke-linejoin: miter"/>
+" clip-path="url(#p6816db068d)" style="fill: #ffffff; stroke: #c0392b; stroke-width: 1.6; stroke-linejoin: miter"/>
    </g>
    <g id="patch_6">
     <path d="M 15.12 262.08 
@@ -104,7 +104,7 @@ Q 275.76 207.36 275.76 213.12
 L 275.76 243.36 
 Q 275.76 249.12 281.52 249.12 
 z
-" clip-path="url(#p6816db068d)" style="fill: #ffffff; stroke: #d55e00; stroke-width: 1.6; stroke-linejoin: miter"/>
+" clip-path="url(#p6816db068d)" style="fill: #ffffff; stroke: #c0392b; stroke-width: 1.6; stroke-linejoin: miter"/>
    </g>
    <g id="patch_8">
     <path d="M 15.12 338.4 
@@ -2214,7 +2214,7 @@ z
    </g>
    <g id="text_15">
     <!-- (output ends here) -->
-    <g style="fill: #d55e00" transform="translate(18 166.977125) scale(0.076 -0.076)">
+    <g style="fill: #c0392b" transform="translate(18 166.977125) scale(0.076 -0.076)">
      <defs>
       <path id="DejaVuSans-Oblique-28" d="M 2731 4856 
 Q 1903 3822 1495 2892 
@@ -2282,7 +2282,7 @@ z
    </g>
    <g id="text_16">
     <!-- no match: -->
-    <g style="fill: #d55e00" transform="translate(296.791172 149.535387) scale(0.09 -0.09)">
+    <g style="fill: #c0392b" transform="translate(296.791172 149.535387) scale(0.09 -0.09)">
      <defs>
       <path id="DejaVuSans-Bold-3a" d="M 716 3500 
 L 1844 3500 
@@ -2309,7 +2309,7 @@ z
      <use xlink:href="#DejaVuSans-Bold-3a" x="524.658203"/>
     </g>
     <!-- dropped -->
-    <g style="fill: #d55e00" transform="translate(300.952969 159.271488) scale(0.09 -0.09)">
+    <g style="fill: #c0392b" transform="translate(300.952969 159.271488) scale(0.09 -0.09)">
      <use xlink:href="#DejaVuSans-Bold-64"/>
      <use xlink:href="#DejaVuSans-Bold-72" x="71.582031"/>
      <use xlink:href="#DejaVuSans-Bold-6f" x="120.898438"/>
@@ -2789,7 +2789,7 @@ z
    </g>
    <g id="text_25">
     <!-- invalid JSON: -->
-    <g style="fill: #d55e00" transform="translate(289.305 225.855387) scale(0.09 -0.09)">
+    <g style="fill: #c0392b" transform="translate(289.305 225.855387) scale(0.09 -0.09)">
      <defs>
       <path id="DejaVuSans-Bold-76" d="M 97 3500 
 L 1216 3500 
@@ -2895,7 +2895,7 @@ z
      <use xlink:href="#DejaVuSans-Bold-3a" x="691.015625"/>
     </g>
     <!-- dropped -->
-    <g style="fill: #d55e00" transform="translate(300.952969 235.591488) scale(0.09 -0.09)">
+    <g style="fill: #c0392b" transform="translate(300.952969 235.591488) scale(0.09 -0.09)">
      <use xlink:href="#DejaVuSans-Bold-64"/>
      <use xlink:href="#DejaVuSans-Bold-72" x="71.582031"/>
      <use xlink:href="#DejaVuSans-Bold-6f" x="120.898438"/>

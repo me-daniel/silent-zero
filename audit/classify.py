@@ -254,6 +254,7 @@ def audit_multi(raw, build, model_dir):
     head, failed = score_info(raw, build, model_dir, "multi_turn_base")
     cls, flg, status_x_class = Counter(), Counter(), Counter()
     crashes, tasks_malformed, failed_with_malformed = [], set(), set()
+    unclosed_schema = 0
     for r in rows:
         tid = r["id"]
         turns = turns_of(r)
@@ -265,6 +266,8 @@ def audit_multi(raw, build, model_dir):
                 ev = turn[k]
                 a = next((x.get("content", "") for x in ev if x.get("role") == "assistant"), "")
                 c, fl = classify(a)
+                if c == "unclosed" and SCHEMA_ECHO.match(loose_blocks(a)[1] or ""):
+                    unclosed_schema += 1  # an unclosed block that starts like a copy of the tool schema
                 cls[c] += 1
                 flg.update(fl)
                 status_x_class[f"{handler_status(ev)}|{c}"] += 1
@@ -274,6 +277,7 @@ def audit_multi(raw, build, model_dir):
                         failed_with_malformed.add(tid)
     err = Counter(f["error"]["error_type"] for f in failed.values()) if failed else Counter()
     return {"tasks": len(rows), "steps": sum(cls.values()), "classes": dict(cls), "flags": dict(flg),
+            "unclosed_schema_like": unclosed_schema,
             "failed_ids": sorted(failed), "passed_ids": sorted({r["id"] for r in rows} - set(failed)),
             "failed_error_types": {i: f["error"]["error_type"] for i, f in sorted(failed.items())},
             "malformed_or_crash_ids": sorted(tasks_malformed | {c["id"] for c in crashes}),

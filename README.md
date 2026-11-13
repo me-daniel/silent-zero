@@ -6,7 +6,7 @@ Status: draft. The audit and the patch are done, and the write-up is a reviewed 
 
 ## What this is about
 
-The [Berkeley Function Calling Leaderboard (BFCL)](https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard) parses a model's tool calls with a strict pattern. The pattern requires `<tool_call>\n{json}\n</tool_call>`. When a call doesn't match or isn't valid JSON, it is dropped without a trace: a missing closing tag, missing newlines, invalid JSON such as `{"cd", "arguments": {...}}`. The step is then scored as if the model had answered in plain text. A call that *is* valid JSON but lacks a usable `"name"` or `"arguments"` is kept and then raises. In single-turn that's a decoder failure. In multi-turn it crashes the prompt builder, and the whole task is scored as failed.
+The [Berkeley Function Calling Leaderboard (BFCL)](https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard) parses a model's tool calls with a strict pattern. The pattern requires `<tool_call>\n{json}\n</tool_call>`. When a call does not match or is not valid JSON, it is dropped without a trace. That covers a missing closing tag, missing newlines and invalid JSON such as `{"cd", "arguments": {...}}`. The step is then scored as if the model had answered in plain text. A call that *is* valid JSON but lacks a usable `"name"` or `"arguments"` is kept and then raises. In single-turn that is a decoder failure. In multi-turn it crashes the prompt builder, and the whole task is scored as failed.
 
 Low-bit quantized models can produce these near-miss calls. This repo documents it for one model at several quantization levels. So a benchmark score can mix up two different problems:
 
@@ -19,7 +19,7 @@ This project:
 
 1. audits saved BFCL outputs of one model at several quantization levels and classifies every failed step,
 2. patches BFCL so these failures are reported as their own error types. Official scores stay unchanged by default, and tolerant parsing is opt-in,
-3. writes up what the official score hides, and what it doesn't.
+3. writes up what the official score hides, and what it does not.
 
 ## Layout
 

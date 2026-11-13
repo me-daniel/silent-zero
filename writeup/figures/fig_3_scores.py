@@ -30,7 +30,8 @@ def main():
         ax.barh(y, 100 * off_acc, color=S.SCORE, height=0.6)
         ax.barh(y, 100 * (tol_acc - off_acc), left=100 * off_acc, color=S.TAG, height=0.6)
         gain = 100 * (tol_acc - off_acc)
-        label = S.one_decimal(100 * off_acc) + (f"  +{S.one_decimal(gain)}" if gain >= 0.05 else "")
+        # before and after, each rounded like the table, so the label never disagrees with it
+        label = S.one_decimal(100 * off_acc) + (f" \u2192 {S.one_decimal(100 * tol_acc)}" if gain >= 0.05 else "")
         S.value(ax, 100 * tol_acc + 1, y, label, b)
     q8 = 100 * A["Q8_0"]["simple_python"]["official"]["accuracy"]  # reference: the 8-bit score
     ax.axvline(q8, color=S.INK, lw=0.8, ls=(0, (1, 2)), zorder=1)
