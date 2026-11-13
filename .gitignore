@@ -125,3 +125,13 @@ desktop.ini
 *.swp
 *.swo
 *~
+
+# --- Secrets & credentials (from the shared project template) ---
+*credentials*.json
+.secrets/
+
+# --- AI assistant: personal state (from the shared project template; .claude/ above already covers these) ---
+.claude/settings.local.json
+.claude/handoff.md
+.claude/handoff.pending
+.mcp.json
