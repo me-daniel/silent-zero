@@ -81,6 +81,12 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(C.official_calls(OK[:-len("</tool_call>")]), [])
         self.assertEqual(C.official_calls('<tool_call>\n{"cd", "arguments": {}}\n</tool_call>'), [])
 
+    def test_one_token_short(self):
+        # only "</tool_call>" missing: one token. Without the final newline, two pieces are missing.
+        self.assertTrue(C.one_token_short(OK[:-len("</tool_call>")]))
+        self.assertFalse(C.one_token_short(OK[:-len("\n</tool_call>")]))
+        self.assertFalse(C.one_token_short('<tool_call>\n{"name": "ls", "arguments": {"a": 1'))
+
 
 if __name__ == "__main__":
     unittest.main()

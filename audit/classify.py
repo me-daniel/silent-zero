@@ -189,6 +189,15 @@ def classify(text):
     return "bad_json", flags  # tags present in an order no rule matches
 
 
+def one_token_short(text):
+    """True if appending only "</tool_call>" (one token in Qwen3's vocabulary) makes the official parser yield a
+    well-formed call for every opened block: the model wrote the call and its final newline, then stopped."""
+    if not isinstance(text, str):
+        return False
+    calls = official_calls(text + CLOSE)
+    return len(calls) == text.count(OPEN) and all(well_formed(c) for c in calls)
+
+
 def jl(path):
     with open(path) as f:
         return [json.loads(l) for l in f if l.strip()]
@@ -208,13 +217,15 @@ def audit_single(raw, build, model_dir, cat):
     rows = jl(os.path.join(raw, build, "result", model_dir, sub, f"{stem}_result.json"))
     head, failed = score_info(raw, build, model_dir, cat)
     cls, flg, by_err = Counter(), Counter(), defaultdict(Counter)
+    one_short = 0
     for r in rows:
         c, fl = classify(r["result"])
         cls[c] += 1
         flg.update(fl)
+        one_short += c == "unclosed" and one_token_short(r["result"])
         f = failed.get(r["id"])
         by_err[f["error_type"] if f else "pass"][c] += 1
-    return {"items": len(rows), "classes": dict(cls), "flags": dict(flg),
+    return {"items": len(rows), "classes": dict(cls), "flags": dict(flg), "unclosed_one_token_short": one_short,
             "official": head, "classes_by_official_outcome": {k: dict(v) for k, v in by_err.items()}}
 
 

@@ -85,6 +85,10 @@ def numbers(audit_dir, verify):
     n["sp_items"] = sp["items"]
     n["iq3_sp_unclosed"] = sp["classes"].get("unclosed", 0)
     n["iq3_sp_recoverable"] = sp["flags"].get("recoverable", 0)
+    n["iq3_sp_one_short"] = sp["unclosed_one_token_short"]  # only "</tool_call>" (one token) missing
+    assert 2 * n["iq3_sp_one_short"] > n["iq3_sp_unclosed"], "abstract: usually one token short"
+    tok = json.load(open(os.path.join(HERE, "..", "vendor", "tokenizer", "Qwen3-4B-Instruct-2507", "tokenizer.json")))
+    assert any(t["content"] == "</tool_call>" for t in tok["added_tokens"]), "text: </tool_call> is a single token"
     n["iq3_sp_wrong_count"] = sum(v for k, v in sp["classes_by_official_outcome"].get(
         "simple_function_checker:wrong_count", {}).items())
     for b in IQ3 + ["Q8_0"]:
@@ -100,7 +104,7 @@ def numbers(audit_dir, verify):
         k = b.lower().replace("iq3_xxs_", "").replace("iq3_xxs", "iq3")
         m = A[b]["multi_turn_base"]
         n[f"{k}_mt_correct"] = m["official"]["correct_count"]
-        n[f"{k}_mt_steps"] = m["steps"]
+        n[f"{k}_mt_steps"] = f'{m["steps"]:,}'
         n[f"{k}_mt_malformed"] = sum(m["classes"].get(c, 0) for c in malformed)
         n[f"{k}_mt_keys_dropped"] = m["classes"].get("keys_dropped", 0)
         n[f"{k}_mt_unclosed"] = m["classes"].get("unclosed", 0)
@@ -141,6 +145,7 @@ def numbers(audit_dir, verify):
     assert len({im[IM_KEY[b]]["tensor_types_sha256"] for b in IQ3}) == 1
     assert {im[IM_KEY[b]]["dataset"] for b in ("IQ3_XXS_X", "IQ3_XXS_G")} == {im["X"]["dataset"]}  # same text
     assert im["X"]["chunks_count"] > 2 * im["G"]["chunks_count"]  # ... cut into longer chunks for my-text-2048
+    assert im["T"]["chunks_count"] > im["G"]["chunks_count"]  # "which also makes the text longer"
     tok = im["calibration_file"]["tokens"]  # "no chunk size gives exactly <public chunks>" from this file
     assert all(tok // c != im["public"]["chunks_count"] for c in range(1, tok + 1))
 
