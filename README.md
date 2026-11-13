@@ -2,6 +2,8 @@
 
 Quantization and when tool calls get dropped.
 
+![A 3-bit model writes a tool call but ends its turn before the closing tag. BFCL's parser does not match it, so the call is dropped and scored as no call, while the patch's opt-in tolerant mode keeps it. The score bar shows how much of the 3-bit simple_python score returns once the missing tag is tolerated.](writeup/figures/generated/readme.svg)
+
 Status: draft. The audit and the patch are done, and the write-up is a reviewed draft, not yet published.
 
 ## What this is about

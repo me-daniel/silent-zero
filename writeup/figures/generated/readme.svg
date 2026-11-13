@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="432" viewBox="0 0 860 432" role="img" aria-labelledby="t d">
+<title id="t">One missing token, one lost call</title>
+<desc id="d">A quantized model writes a tool call but ends its turn before the closing tag. BFCL's regex does not match, so the call is dropped and scored as no call. With the patch's opt-in tolerant mode the call is kept. The IQ3_XXS simple_python score is 65.8, and 91.0 once the missing tag is tolerated, against 95.5 for Q8_0.</desc>
+<defs><clipPath id="code"><rect x="29" y="113" width="402" height="148" rx="8"/></clipPath></defs>
+<style>@keyframes ty1{0%,3.12%{transform:translateX(0)}6.88%,7.63%{transform:translateX(90px)}7.69%,96%{transform:translateX(440px)}100%{transform:translateX(0)}}.ty1{transform:translateX(440px);animation:ty1 16.0s linear infinite both}@keyframes ty2{0%,7.50%{transform:translateX(0)}17.50%,18.25%{transform:translateX(308px)}18.31%,96%{transform:translateX(440px)}100%{transform:translateX(0)}}.ty2{transform:translateX(440px);animation:ty2 16.0s linear infinite both}@keyframes ghost{0%,19.38%{opacity:0}21.56%,94%{opacity:1}98%,100%{opacity:0}}.ghost{animation:ghost 16.0s linear infinite both}@keyframes imend{0%,22.50%{opacity:0}24.69%,94%{opacity:1}98%,100%{opacity:0}}.imend{animation:imend 16.0s linear infinite both}@keyframes note{0%,25.00%{opacity:0}27.19%,94%{opacity:1}98%,100%{opacity:0}}.note{animation:note 16.0s linear infinite both}@keyframes scan{0%,29.38%{opacity:0}30.63%,36.88%{opacity:1}38.75%,100%{opacity:0}}.scan{opacity:0;animation:scan 16.0s linear infinite both}@keyframes sweep{0%,29.38%{transform:translateX(0)}36.88%,100%{transform:translateX(140px)}}.sweep{animation:sweep 16.0s linear infinite both}@keyframes miss{0%,37.50%{opacity:0}39.69%,94%{opacity:1}98%,100%{opacity:0}}.miss{animation:miss 16.0s linear infinite both}@keyframes drop{0%,40.00%{opacity:0}42.19%,94%{opacity:1}98%,100%{opacity:0}}.drop{animation:drop 16.0s linear infinite both}@keyframes rec{0%,45.00%{opacity:0}47.19%,94%{opacity:1}98%,100%{opacity:0}}.rec{animation:rec 16.0s linear infinite both}@keyframes fix{0%,51.25%{opacity:0}53.44%,94%{opacity:1}98%,100%{opacity:0}}.fix{animation:fix 16.0s linear infinite both}@keyframes gtag{0%,68.75%{transform:scaleX(0);opacity:1}76.25%,94%{transform:scaleX(1);opacity:1}98%,100%{transform:scaleX(1);opacity:0}}.gtag{transform-box:fill-box;transform-origin:left center;animation:gtag 16.0s cubic-bezier(.3,.7,.4,1) infinite both}@keyframes gbase{0%,57.50%{transform:scaleX(0);opacity:1}66.25%,94%{transform:scaleX(1);opacity:1}98%,100%{transform:scaleX(1);opacity:0}}.gbase{transform-box:fill-box;transform-origin:left center;animation:gbase 16.0s cubic-bezier(.3,.7,.4,1) infinite both}@keyframes ref{0%,57.50%{opacity:0}59.69%,94%{opacity:1}98%,100%{opacity:0}}.ref{animation:ref 16.0s linear infinite both}@keyframes l1{0%,66.25%{opacity:0}68.44%,94%{opacity:1}98%,100%{opacity:0}}.l1{animation:l1 16.0s linear infinite both}@keyframes l2{0%,76.25%{opacity:0}78.44%,94%{opacity:1}98%,100%{opacity:0}}.l2{animation:l2 16.0s linear infinite both}@media (prefers-reduced-motion: reduce){*{animation:none!important}}</style>
+<rect x="0.5" y="0.5" width="859" height="431" rx="12" fill="#fbfaf7" stroke="#d9d6cc"/>
+<text x="28" y="42" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="19" fill="#1f1f1c" font-weight="600" text-anchor="start">One missing token, one lost call</text>
+<text x="28" y="64" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="12.5" fill="#6b6a64" font-weight="normal" text-anchor="start">Qwen3-4B-Instruct-2507 at IQ3_XXS (3-bit), scored by BFCL on simple_python</text>
+<text x="28" y="102" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="10.5" fill="#6b6a64" font-weight="600" text-anchor="start" letter-spacing="0.08em">THE MODEL WRITES</text>
+<rect x="28" y="112" width="404.0" height="150" rx="8" fill="white" stroke="#d9d6cc" stroke-width="1"/>
+<text x="46" y="142" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#1f1f1c" font-weight="normal" text-anchor="start" textLength="85.8" lengthAdjust="spacingAndGlyphs">&lt;tool_call&gt;</text>
+<g clip-path="url(#code)"><g class="ty1"><rect x="45" y="128" width="420" height="20" fill="white"/><rect x="45" y="129" width="2" height="17" fill="#1f1f1c"/></g></g>
+<text x="46" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#1f1f1c" font-weight="normal" text-anchor="start" textLength="304.2" lengthAdjust="spacingAndGlyphs">{&quot;name&quot;: &quot;area&quot;, &quot;arguments&quot;: {&quot;r&quot;: 2}}</text>
+<g clip-path="url(#code)"><g class="ty2"><rect x="45" y="152" width="420" height="20" fill="white"/><rect x="45" y="153" width="2" height="17" fill="#1f1f1c"/></g></g>
+<rect x="42" y="178" width="101.6" height="24" rx="4" fill="#fdf6e6" stroke="#e69f00" stroke-width="1.4" stroke-dasharray="4 3" class="ghost"/>
+<g class="ghost">
+<text x="46" y="195" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#b07800" font-weight="normal" text-anchor="start" textLength="93.6" lengthAdjust="spacingAndGlyphs">&lt;/tool_call&gt;</text>
+</g>
+<g class="imend">
+<text x="157.6" y="195" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#6b6a64" font-weight="normal" text-anchor="start" textLength="78.0" lengthAdjust="spacingAndGlyphs">&lt;|im_end|&gt;</text>
+</g>
+<g class="note">
+<rect x="46" y="214" width="9.0" height="9" rx="2" fill="#e69f00" stroke="none" stroke-width="1"/>
+<text x="62" y="223" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="12" fill="#1f1f1c" font-weight="normal" text-anchor="start">closing tag never written: the model ends its turn</text>
+<text x="62" y="243" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="12" fill="#6b6a64" font-weight="normal" text-anchor="start">one token short of a well-formed call</text>
+</g>
+<text x="460" y="102" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="10.5" fill="#6b6a64" font-weight="600" text-anchor="start" letter-spacing="0.08em">BFCL&#x27;S PARSER</text>
+<rect x="460" y="112" width="372.0" height="44" rx="8" fill="#f6f5f0" stroke="#d9d6cc" stroke-width="1"/>
+<text x="476" y="139" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="13" fill="#1f1f1c" font-weight="normal" text-anchor="start" textLength="249.6" lengthAdjust="spacingAndGlyphs">&lt;tool_call&gt;\n(.*?)\n&lt;/tool_call&gt;</text>
+<g class="scan"><rect class="sweep" x="474" y="122" width="23" height="24" rx="3" fill="#009e73" opacity="0.18"/></g>
+<rect x="614.4" y="122" width="113.2" height="24" rx="3" fill="none" stroke="#c0392b" stroke-width="1.6" class="miss"/>
+<g class="drop">
+<rect x="460" y="166" width="372.0" height="30" rx="6" fill="#fbeceb" stroke="#c0392b" stroke-width="1"/>
+<text x="476" y="186" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="12.5" fill="#1f1f1c" font-weight="normal" text-anchor="start">✕  no match, so the call is dropped without a trace</text>
+</g>
+<g class="rec">
+<text x="460" y="220" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11.5" fill="#6b6a64" font-weight="normal" text-anchor="start">BFCL records</text>
+<text x="560" y="220" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="12.5" fill="#1f1f1c" font-weight="600" text-anchor="start">no call: scored like a plain-text answer</text>
+</g>
+<g class="fix">
+<rect x="452" y="232" width="388.0" height="32" rx="6" fill="#eaf3f9" stroke="none" stroke-width="1"/>
+<text x="460" y="253" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11.5" fill="#0072b2" font-weight="600" text-anchor="start">With the patch</text>
+<text x="560" y="253" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="12.5" fill="#1f1f1c" font-weight="normal" text-anchor="start">✓  call kept (tolerant mode, opt-in)</text>
+</g>
+<text x="28" y="304" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="12" fill="#6b6a64" font-weight="normal" text-anchor="start">simple_python accuracy (%)</text>
+<rect x="28" y="330" width="700.0" height="20" rx="4" fill="#efede6" stroke="none" stroke-width="1"/>
+<rect x="28" y="330" width="637.0" height="20" rx="4" fill="#e69f00" stroke="none" stroke-width="1" class="gtag"/>
+<rect x="28" y="330" width="460.2" height="20" rx="4" fill="#4d5d6c" stroke="none" stroke-width="1" class="gbase"/>
+<g class="ref"><line x1="696.5" x2="696.5" y1="322" y2="358" stroke="#1f1f1c" stroke-width="1.2" stroke-dasharray="1.5 2.5"/>
+<text x="702.5" y="326" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11.5" fill="#6b6a64" font-weight="normal" text-anchor="start">Q8_0 (8-bit) 95.5</text>
+</g>
+<g class="l1">
+<rect x="28" y="364" width="9.0" height="9" rx="2" fill="#4d5d6c" stroke="none" stroke-width="1"/>
+<text x="43" y="373" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="12" fill="#1f1f1c" font-weight="normal" text-anchor="start">BFCL score 65.8</text>
+</g>
+<g class="l2">
+<rect x="198" y="364" width="9.0" height="9" rx="2" fill="#e69f00" stroke="none" stroke-width="1"/>
+<text x="213" y="373" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="12" fill="#1f1f1c" font-weight="normal" text-anchor="start">91.0 once the missing tag is tolerated</text>
+</g>
+<text x="28" y="412" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, 'DejaVu Sans', sans-serif" font-size="11" fill="#6b6a64" font-weight="normal" text-anchor="start">112 of 400 answers lose the closing tag, 96 of them only that one token. The call above is an illustration.</text>
+</svg>
