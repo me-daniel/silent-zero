@@ -42,4 +42,4 @@ BFCL itself is not included. The patch applies to a clone of `ShishirPatil/goril
 
 ## License
 
-BFCL is Apache-2.0. A license for this repository's own code will be added before the first release.
+This repository is licensed under the Apache License 2.0 (see `LICENSE`). The patch in `patch/` modifies BFCL, which is also Apache-2.0.

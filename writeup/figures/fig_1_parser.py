@@ -23,7 +23,7 @@ ROWS = [
     ("Closing tag missing", ["<tool_call>", '{"name": "ls", "arguments": {"a": true}}', ""],
      ("no match:\ndropped", S.BAD), ["scored as if the model", "called nothing"],
      ["tolerant mode: parsed and", "checked like row 1"]),
-    ("Key names missing", ["<tool_call>", '{"cd", "arguments": {"folder": "x"}}', "</tool_call>"],
+    ('"name" key missing', ["<tool_call>", '{"cd", "arguments": {"folder": "x"}}', "</tool_call>"],
      ("invalid JSON:\ndropped", S.BAD), ["scored as if the model", "called nothing"],
      ["key repair: rebuilt as a call,", "then checked like row 1"]),
     ("Schema copied", ["<tool_call>", '{"name": "ls", "description": "...",', ' "parameters": {...}}', "</tool_call>"],

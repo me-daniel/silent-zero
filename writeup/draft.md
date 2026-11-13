@@ -43,7 +43,7 @@ A second path is worse. A call that is valid JSON but lacks a usable `"name"` or
 
 A build is one GGUF file of the model. Low-bit builds are usually made with an *importance matrix* (imatrix), activation statistics for the inputs of each weight matrix that llama.cpp collects by running the 16-bit model over a calibration text. The text is cut into chunks of a fixed number of tokens. All builds come from the same 16-bit weights.
 
-Four builds are public: Q8_0, Q4_K_M, IQ3_XXS and IQ2_M, at 8, 4, 3 and 2 bits, from `bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF` at revision `ae44f08`. Their headers record the same imatrix, computed from `calibration_datav3.txt`. I call these the public imatrix and the public calibration text below. The public model card names llama.cpp b6096.
+Four builds are public: Q8_0, Q4_K_M, IQ3_XXS and IQ2_M, at 8, 4, 3 and 2 bits, from `bartowski/Qwen_Qwen3-4B-Instruct-2507-GGUF` at revision `ae44f08`. Their headers record the same imatrix, computed from `calibration_datav3.txt`. Q8_0 records it but does not use it, because llama.cpp's Q8_0 quantizer ignores the imatrix. I call these the public imatrix and the public calibration text below. The public model card names llama.cpp b6096.
 
 To find out where the missing tag comes from, I made six more 3-bit builds with llama.cpp b10964. Each one is the same as an earlier build except for one thing, and each is named after its imatrix. All seven 3-bit builds, public and mine, assign the same quantization type to each tensor, so they differ only in the imatrix and in the llama.cpp version.
 
