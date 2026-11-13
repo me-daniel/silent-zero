@@ -20,6 +20,22 @@ MODEL_DIR = "Qwen_Qwen3-4B-Instruct-2507-FC"
 SUB = {"simple_python": "non_live", "live_simple": "live", "multi_turn_base": "multi_turn"}
 IQ3 = ["IQ3_XXS", "IQ3_XXS_R", "IQ3_XXS_G", "IQ3_XXS_T", "IQ3_XXS_X", "IQ3_XXS_W", "IQ3_XXS_V"]
 
+# Names in the text, tables and figures. The public builds keep their file names. My builds are all IQ3_XXS and
+# are named after their imatrix, in the order of section 2: each differs from an earlier one in one thing.
+NAMES = {
+    "Q8_0": "Q8_0", "Q4_K_M": "Q4_K_M", "IQ3_XXS": "IQ3_XXS", "IQ2_M": "IQ2_M",
+    "IQ3_XXS_R": "public-imatrix",     # the public imatrix file, quantized with b10964
+    "IQ3_XXS_W": "public-text",        # imatrix recomputed from the public calibration text, 512-token chunks
+    "IQ3_XXS_V": "public-text-b6096",  # as public-text, imatrix computed with b6096
+    "IQ3_XXS_X": "my-text",            # as public-text, my own general text
+    "IQ3_XXS_G": "my-text-2048",       # as my-text, 2048-token chunks
+    "IQ3_XXS_T": "my-text-tools",      # as my-text-2048, plus tool-call dialogues
+}
+PUBLIC = ["Q8_0", "Q4_K_M", "IQ3_XXS", "IQ2_M"]
+MINE = ["IQ3_XXS_R", "IQ3_XXS_W", "IQ3_XXS_V", "IQ3_XXS_X", "IQ3_XXS_G", "IQ3_XXS_T"]
+IM_KEY = {"IQ3_XXS": "public", "IQ3_XXS_R": "R", "IQ3_XXS_W": "W", "IQ3_XXS_V": "V", "IQ3_XXS_X": "X",
+          "IQ3_XXS_G": "G", "IQ3_XXS_T": "T"}  # labels in data/audit/imatrix.json
+
 
 def score_head(verify, mode, build, cat):
     p = os.path.join(verify, mode, build, cat, "score", MODEL_DIR, SUB[cat], f"BFCL_v4_{cat}_score.json")
@@ -120,7 +136,11 @@ def numbers(audit_dir, verify):
     assert im["W"]["chunks_count"] == im["calibration_file"]["chunks_at"]["512"]  # our run matches the count
     shared = [b for b in ("Q4_K_M", "IQ2_M", "R") if (im[b]["chunks_count"], im[b]["dataset"], im[b]["entries_count"])
               == (im["public"]["chunks_count"], im["public"]["dataset"], im["public"]["entries_count"])]
-    assert shared == ["Q4_K_M", "IQ2_M", "R"], shared  # same imatrix file name and chunk count as P
+    assert shared == ["Q4_K_M", "IQ2_M", "R"], shared  # same imatrix file name and chunk count as the public IQ3_XXS
+    # "all 3-bit builds give every tensor the same quantization type": they differ only in imatrix and llama.cpp
+    assert len({im[IM_KEY[b]]["tensor_types_sha256"] for b in IQ3}) == 1
+    assert {im[IM_KEY[b]]["dataset"] for b in ("IQ3_XXS_X", "IQ3_XXS_G")} == {im["X"]["dataset"]}  # same text
+    assert im["X"]["chunks_count"] > 2 * im["G"]["chunks_count"]  # ... cut into longer chunks for my-text-2048
     tok = im["calibration_file"]["tokens"]  # "no chunk size gives exactly <public chunks>" from this file
     assert all(tok // c != im["public"]["chunks_count"] for c in range(1, tok + 1))
 
@@ -162,7 +182,7 @@ def numbers(audit_dir, verify):
     assert n["iq3_sp_tol_gain_items"] <= n["iq3_sp_recoverable"], "gains are at most the recoverable calls"
     tol_ls = {b: score_head(verify, "tolerant", b, "live_simple")["accuracy"] for b in IQ3}
     top2 = sorted(tol_ls, key=tol_ls.get, reverse=True)[:2]
-    assert set(top2) == {"IQ3_XXS", "IQ3_XXS_R"}, "text: P and R score highest of the 3-bit builds on live_simple"
+    assert set(top2) == {"IQ3_XXS", "IQ3_XXS_R"}, "text: the two public-imatrix builds score highest of the 3-bit builds on live_simple"
     assert "simple_python" not in A["Q4_K_M"], "text: Q4_K_M was run on multi-turn only"
     return n
 
@@ -179,6 +199,10 @@ def main():
     if unknown:
         sys.exit(f"unknown placeholders: {sorted(unknown)}")
     out = re.sub(r"\{\{(\w+)\}\}", lambda m: str(n[m.group(1)]), t)
+    for b in MINE:  # every build of mine is named and described in the text
+        assert f"`{NAMES[b]}`" in out, NAMES[b]
+    assert not re.search(r"\b[PRWVXGT]\b(?![-_.])", re.sub(r"`[^`\n]*`", "", re.sub(r"```.*?```", "", out, flags=re.S))), \
+        "a single-letter build name is left in the text"
     for img in re.findall(r"!\[[^\]]*\]\(([^)]+)\)", out):  # figures: run writeup/figures/fig_*.py first
         if not os.path.exists(os.path.join(HERE, img)):
             sys.exit(f"missing figure {img}: run .venv/bin/python -I writeup/figures/<script>.py")

@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import style as S  # noqa: E402
 
-BUILDS = ["Q8_0", "Q4_K_M", "IQ3_XXS", "IQ3_XXS_R", "IQ3_XXS_G", "IQ3_XXS_T", "IQ2_M"]
+BUILDS = ["Q8_0", "Q4_K_M", "IQ3_XXS", "IQ2_M", "IQ3_XXS_R", "IQ3_XXS_G", "IQ3_XXS_T"]
 
 
 def main():
@@ -23,7 +23,8 @@ def main():
     ys = S.rows(ax, BUILDS)
     known = {c for _, cs, _ in S.KINDS for c in cs}
     xmax = 0
-    for y, b in zip(ys, BUILDS):
+    for b in BUILDS:
+        y = ys[b]
         cl = A[b]["multi_turn_base"]["classes"]
         assert not (set(cl) - known - {"ok", "text"}), (b, set(cl) - known)
         x = 0
@@ -32,7 +33,7 @@ def main():
             if v:
                 ax.barh(y, v, left=x, color=col, height=0.6, edgecolor="white", lw=0.6)
                 x += v
-        S.value(ax, x + 1.5, y, str(x))
+        S.value(ax, x + 1.5, y, str(x), b)
         xmax = max(xmax, x)
     ax.set_xlim(0, xmax * 1.1)
     ax.set_xlabel(f"malformed steps in multi_turn_base ({A['Q8_0']['multi_turn_base']['tasks']} tasks)")

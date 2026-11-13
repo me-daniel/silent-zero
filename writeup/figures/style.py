@@ -2,7 +2,7 @@
 
 Figures are drawn at FIG_W inches and shown at about the text width of the write-up (~46rem), so fonts are
 set close to their on-screen size. Colours follow the Okabe-Ito palette (colour-blind safe), and
-amber always means "closing tag missing". Row labels say what each build is, so a figure reads without the text.
+amber always means "closing tag missing". Rows are grouped into public builds and mine, with the same names as in the text.
 """
 import json
 import os
@@ -18,19 +18,18 @@ import build  # noqa: E402  (score files and helpers, same source as the text)
 
 FIG_W = 8.0
 
-# row labels: what each build is, readable without the text
-LABELS = {
-    "Q8_0": "Q8_0 (8-bit)",
-    "Q4_K_M": "Q4_K_M (4-bit)",
-    "IQ3_XXS": "P (3-bit, public imatrix)",
-    "IQ3_XXS_R": "R (3-bit, public imatrix)",
-    "IQ3_XXS_W": "W (3-bit, public calibration text)",
-    "IQ3_XXS_V": "V (3-bit, public calibration text)",
-    "IQ3_XXS_X": "X (3-bit, my text)",
-    "IQ3_XXS_G": "G (3-bit, my text)",
-    "IQ3_XXS_T": "T (3-bit, my text + tool calls)",
-    "IQ2_M": "IQ2_M (2-bit)",
-}
+# row labels: the public builds by file name and bits, mine by their name in the text (writeup/build.NAMES),
+# set in monospace like in the text
+NAMES = build.NAMES
+BITS = {"Q8_0": 8, "Q4_K_M": 4, "IQ3_XXS": 3, "IQ2_M": 2}
+GROUP_PUBLIC = "Public builds"
+GROUP_MINE = "My builds (IQ3_XXS, 3-bit)"
+MINE_BAND = "#f3f1ea"  # light background behind my builds, so the two groups read apart at a glance
+
+
+def label(b):
+    return f"{b} ({BITS[b]}-bit)" if b in BITS else NAMES[b]
+
 
 INK = "#1f1f1c"
 MUTED = "#6b6a64"
@@ -54,19 +53,49 @@ KINDS = [
 one_decimal = build.one_decimal  # same rounding as the text
 
 
-def value(ax, x, y, text):
-    """A value label right of a bar, on a white background so grid lines don't cross it."""
+def value(ax, x, y, text, b=None):
+    """A value label right of a bar, on the row's background so grid lines don't cross it."""
+    bg = MINE_BAND if b in build.MINE else "white"
     ax.text(x, y, text, va="center", fontsize=9, color=MUTED, zorder=5,
-            bbox=dict(facecolor="white", edgecolor="none", pad=1.0))
+            bbox=dict(facecolor=bg, edgecolor="none", pad=1.0))
 
 
 def rows(ax, builds):
-    """Horizontal rows top to bottom with the build labels, no y axis line."""
-    ys = list(range(len(builds)))[::-1]
-    ax.set_yticks(ys)
-    ax.set_yticklabels([LABELS[b] for b in builds])
-    ax.set_ylim(-0.6, len(builds) - 0.4)
+    """Horizontal rows top to bottom in two groups, public builds and mine, each under a bold heading.
+
+    Returns {build: y}. My builds sit on a light band, and their names are in monospace like in the text.
+    """
+    groups = [(GROUP_PUBLIC, [b for b in builds if b in build.PUBLIC]),
+              (GROUP_MINE, [b for b in builds if b in build.MINE])]
+    assert sum(len(g) for _, g in groups) == len(builds), builds
+    ticks, labels, ys, y = [], [], {}, 0.0
+    for title, bs in groups:
+        if not bs:
+            continue
+        y -= 0.15 if ticks else 0
+        ticks.append(y)
+        labels.append(title)
+        y -= 0.85
+        top = y + 0.5
+        for b in bs:
+            ys[b] = y
+            ticks.append(y)
+            labels.append(label(b))
+            y -= 1
+        if title == GROUP_MINE:
+            ax.axhspan(y + 0.5, top + 0.85, color=MINE_BAND, zorder=0, lw=0)
+    ax.set_yticks(ticks)
+    ax.set_yticklabels(labels)
     ax.tick_params(axis="y", length=0, labelsize=9.5, labelcolor=INK)
+    for t, text in zip(ax.get_yticklabels(), labels):
+        if text in (GROUP_PUBLIC, GROUP_MINE):
+            t.set_fontweight("bold")
+            t.set_color(MUTED)
+            t.set_fontsize(9)
+        elif text in NAMES.values() and text not in BITS:
+            t.set_fontfamily("DejaVu Sans Mono")
+            t.set_fontsize(9)
+    ax.set_ylim(y + 0.5, 0.5)
     ax.spines["left"].set_visible(False)
     ax.grid(axis="x", color=RULE, lw=0.6)
     ax.set_axisbelow(True)

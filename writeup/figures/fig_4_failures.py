@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import style as S  # noqa: E402
 
-BUILDS = ["Q4_K_M", "IQ3_XXS", "IQ3_XXS_R", "IQ3_XXS_G", "IQ3_XXS_T", "IQ2_M"]
+BUILDS = ["Q4_K_M", "IQ3_XXS", "IQ2_M", "IQ3_XXS_R", "IQ3_XXS_G", "IQ3_XXS_T"]
 CAUSES = [  # (label, BFCL error types, colour)
     ("contains a malformed call or a crash", None, S.BAD),
     ("model stops without a call", {"empty_turn_model_response"}, "#8a8984"),
@@ -29,7 +29,8 @@ def main():
     fig, ax = plt.subplots(figsize=(S.FIG_W, 3.0))
     ys = S.rows(ax, BUILDS)
     q8 = set(A["Q8_0"]["multi_turn_base"]["passed_ids"])
-    for y, b in zip(ys, BUILDS):
+    for b in BUILDS:
+        y = ys[b]
         m = A[b]["multi_turn_base"]
         new = q8 & set(m["failed_ids"])
         broken = new & set(m["malformed_or_crash_ids"])
@@ -43,7 +44,7 @@ def main():
             if v:
                 ax.barh(y, v, left=x, color=col, height=0.6, edgecolor="white", lw=0.6)
                 x += v
-        S.value(ax, x + 0.6, y, f"{len(broken)} of {len(new)} with a malformed call")
+        S.value(ax, x + 0.6, y, f"{len(broken)} of {len(new)} with a malformed call", b)
     ax.set_xlim(0, 64)
     ax.set_xlabel("tasks that Q8_0 passes and this build fails")
     h = [plt.Rectangle((0, 0), 1, 1, color=col) for _, _, col in CAUSES]

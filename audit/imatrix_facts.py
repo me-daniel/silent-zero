@@ -4,7 +4,7 @@
         public=<public IQ3_XXS.gguf> W=<own IQ3_XXS_W.gguf> ...
 
 Needs the `gguf` package (llama.cpp's gguf-py, or `pip install gguf`). Writes {label: {key: value}} for the
-quantize.imatrix.* keys. The header stores the chunk count but not the chunk size.
+quantize.imatrix.* keys, plus "tensor_types_sha256", a hash of every tensor's name and quant type. The header stores the chunk count but not the chunk size.
 
 With --calib FILE --tokenizer tokenizer.json, also writes "calibration_file": the file's token count and
 the chunk count llama-imatrix would get from it at several chunk sizes (tokens // size), to compare with
@@ -25,6 +25,9 @@ def imatrix_meta(path):
         if k.startswith("quantize.imatrix."):
             v = f.contents()
             out[k.removeprefix("quantize.imatrix.")] = v
+    # the type of every tensor, so builds can be compared on what the quantizer chose for each weight
+    types = sorted((t.name, t.tensor_type.name) for t in r.tensors)
+    out["tensor_types_sha256"] = hashlib.sha256(json.dumps(types).encode()).hexdigest()
     return out
 
 
