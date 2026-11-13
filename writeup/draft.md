@@ -37,7 +37,7 @@ A second path is worse. A call that is valid JSON but lacks a usable `"name"` or
 
 ![Figure 1: what BFCL's parser does with four kinds of model output](figures/generated/fig_1_parser.svg)
 
-*Figure 1. What BFCL's parser does with four kinds of model output.* Kinds 2 to 4 occur in the saved outputs of the low-bit builds (arguments shortened). Dashed and blue: the opt-in modes of the patch (see `patch/README.md`). With all modes off, the patch only adds a label to each failed entry that records what the parser saw.
+*Figure 1. What BFCL's parser does with four kinds of model output.* Kinds 2 to 4 occur in the saved outputs of the low-bit builds (arguments shortened). Blue: what changes with the patch's opt-in mode for that kind of output (`SILENT_ZERO_TOLERANT`, `SILENT_ZERO_REPAIR_KEYS` and `SILENT_ZERO_SAFE_HISTORY` in `patch/README.md`). All three are off by default, and then the patch only adds a label to each failed entry that records what the parser saw.
 
 ## 2. Builds and setup
 

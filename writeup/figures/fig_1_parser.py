@@ -1,8 +1,9 @@
 """Figure 1: what BFCL's Qwen parser does with four kinds of model output.
 
 Rows are output shapes seen in the saved outputs (arguments shortened). Columns: what the model writes, what
-the parser does (upstream `_extract_tool_calls` at 6ea5797), and what BFCL records. Dashed blue arrows mark
-the patch's opt-in modes. No data numbers in this figure.
+the parser does (upstream `_extract_tool_calls` at 6ea5797), and what BFCL records. Blue lines under an
+outcome say what changes with the patch's opt-in mode for that kind (patch/README.md), off by default.
+No data numbers in this figure.
 
     .venv/bin/python -I writeup/figures/fig_1_parser.py   ->  writeup/figures/generated/fig_1_parser.{svg,png}
 """
@@ -18,13 +19,16 @@ import style as S  # noqa: E402
 PATCH = "#0072b2"
 ROWS = [
     ("Well formed", ["<tool_call>", '{"name": "ls", "arguments": {"a": true}}', "</tool_call>"],
-     ("parsed", S.GOOD), ["checked against the", "expected call"]),
+     ("parsed", S.GOOD), ["checked against the", "expected call"], []),
     ("Closing tag missing", ["<tool_call>", '{"name": "ls", "arguments": {"a": true}}', ""],
-     ("no match:\ndropped", S.BAD), ["scored as if the model", "called nothing"]),
+     ("no match:\ndropped", S.BAD), ["scored as if the model", "called nothing"],
+     ["tolerant mode: parsed and", "checked like row 1"]),
     ("Key names missing", ["<tool_call>", '{"cd", "arguments": {"folder": "x"}}', "</tool_call>"],
-     ("invalid JSON:\ndropped", S.BAD), ["scored as if the model", "called nothing"]),
+     ("invalid JSON:\ndropped", S.BAD), ["scored as if the model", "called nothing"],
+     ["key repair: rebuilt as a call,", "then checked like row 1"]),
     ("Schema copied", ["<tool_call>", '{"name": "ls", "description": "...",', ' "parameters": {...}}', "</tool_call>"],
-     ("valid JSON:\nkept", "#b07800"), ["multi-turn: the next prompt", "raises, the whole task is lost"]),
+     ("valid JSON:\nkept", "#b07800"), ["multi-turn: the next prompt", "raises, the whole task is lost"],
+     ["safe history: the call is skipped,", "the task continues"]),
 ]
 
 
@@ -57,7 +61,9 @@ def main():
         ax.text(x, H - 0.22, t, fontsize=11, fontweight="bold", va="center")
 
     ys = []
-    for i, (label, code, (chip, col), outcome) in enumerate(ROWS):
+    ax.text(ox, H - 0.43, "blue: with the patch's opt-in mode", fontsize=8, color=PATCH, style="italic",
+            va="center")
+    for i, (label, code, (chip, col), outcome, patched) in enumerate(ROWS):
         y0 = top - (i + 1) * rh - i * gap
         yc = y0 + rh / 2
         ys.append(yc)
@@ -76,16 +82,11 @@ def main():
                 linespacing=1.15)
         arrow(ax, cx + cw + 0.04, yc, px - 0.04, yc)
         arrow(ax, px + pw + 0.04, yc, ox - 0.08, yc)
-        ax.text(ox, yc + 0.09, outcome[0], fontsize=9.5, va="center")
-        ax.text(ox, yc - 0.12, outcome[1], fontsize=9.5, va="center")
-
-    # opt-in modes of the patch
-    arrow(ax, px + pw * 0.75, ys[1] + 0.29, ox - 0.1, ys[0] - 0.12, color=PATCH, ls="--", rad=-0.25)
-    ax.text(px + pw + 0.12, (ys[0] + ys[1]) / 2 - 0.02, "tolerant mode", fontsize=8.5, color=PATCH,
-            style="italic", va="center")
-    ax.text(ox, ys[3] - 0.36, "safe history: the call is skipped,", fontsize=8.5, color=PATCH, style="italic",
-            va="center")
-    ax.text(ox, ys[3] - 0.53, "the task continues", fontsize=8.5, color=PATCH, style="italic", va="center")
+        oy = yc + (0.22 if patched else 0.09)  # outcome text, moved up to make room for the patched line
+        ax.text(ox, oy, outcome[0], fontsize=9.5, va="center")
+        ax.text(ox, oy - 0.2, outcome[1], fontsize=9.5, va="center")
+        for j, line in enumerate(patched):
+            ax.text(ox, yc - 0.2 - j * 0.16, line, fontsize=8.5, color=PATCH, style="italic", va="center")
 
     S.save(fig, "fig_1_parser")
     plt.close(fig)
