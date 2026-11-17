@@ -18,6 +18,8 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "audit"))
+import classify as C  # noqa: E402  (the audit's classifier, for counts the audit files do not hold)
 MODEL_DIR = "Qwen_Qwen3-4B-Instruct-2507-FC"
 SUB = {"simple_python": "non_live", "live_simple": "live", "multi_turn_base": "multi_turn"}
 IQ3 = ["IQ3_XXS", "IQ3_XXS_R", "IQ3_XXS_G", "IQ3_XXS_T", "IQ3_XXS_X", "IQ3_XXS_W", "IQ3_XXS_V"]
@@ -79,8 +81,9 @@ def numbers(audit_dir, verify, raw):
             n[f"{k}_{short}_gain"] = f'{float(n[f"{k}_{short}_tol"]) - float(n[f"{k}_{short}_off"]):.2f}'
     tol_sp = [score_head(verify, "tolerant", b, "simple_python")["accuracy"] for b in IQ3]
     n["iq3_sp_tol_min"], n["iq3_sp_tol_max"] = pct(min(tol_sp)), pct(max(tol_sp))
-    n["iq3_sp_parser_points"] = one_decimal(100 * (score_head(verify, "tolerant", "IQ3_XXS", "simple_python")["accuracy"] - off("IQ3_XXS", "simple_python")["accuracy"]))
-    n["iq3_sp_total_points"] = one_decimal(100 * (off("Q8_0", "simple_python")["accuracy"] - off("IQ3_XXS", "simple_python")["accuracy"]))
+    # differences of the displayed two-decimal scores, like the table
+    n["iq3_sp_parser_points"] = f'{float(n["iq3_sp_tol"]) - float(n["iq3_sp_off"]):.2f}'
+    n["iq3_sp_total_points"] = f'{float(n["q8_0_sp_off"]) - float(n["iq3_sp_off"]):.2f}'
 
     # single-turn classes
     sp = A["IQ3_XXS"]["simple_python"]
@@ -154,6 +157,20 @@ def numbers(audit_dir, verify, raw):
     # single-turn: items the tolerant parser turns into correct answers
     tol_ok = score_head(verify, "tolerant", "IQ3_XXS", "simple_python")["correct_count"]
     n["iq3_sp_tol_gain_items"] = tol_ok - off("IQ3_XXS", "simple_python")["correct_count"]
+    # of those, how many need only the closing tag, and how many also the newline before it
+    res = os.path.join(verify, "tolerant", "IQ3_XXS", "simple_python", "result", MODEL_DIR, SUB["simple_python"],
+                       "BFCL_v4_simple_python_result.json")
+    raw_by_id = {r["id"]: r["result"] for r in map(json.loads, open(res))}
+    gained = failed_ids(verify, "default", "IQ3_XXS", "simple_python") - failed_ids(verify, "tolerant", "IQ3_XXS", "simple_python")
+    assert len(gained) == n["iq3_sp_tol_gain_items"]
+    assert all(C.classify(raw_by_id[i])[0] == "unclosed" for i in gained), "text: every gained item is an unclosed call"
+    n["iq3_sp_tol_gain_tag_only"] = sum(C.one_token_short(raw_by_id[i]) for i in gained)
+    n["iq3_sp_tol_gain_newline"] = n["iq3_sp_tol_gain_items"] - n["iq3_sp_tol_gain_tag_only"]
+    # "far shorter than BFCL's limit of 4,096 new tokens": a token is at least one character
+    unclosed_raw = [t for t in raw_by_id.values() if C.classify(t)[0] == "unclosed"]
+    assert len(unclosed_raw) == n["iq3_sp_unclosed"]
+    n["iq3_sp_unclosed_max_chars"] = f"{max(map(len, unclosed_raw)):,}"
+    assert 4 * max(map(len, unclosed_raw)) < 4096
     for b in IQ3:  # "it creates no new failures": tolerant failures are a subset of default failures
         assert failed_ids(verify, "tolerant", b, "simple_python") <= failed_ids(verify, "default", b, "simple_python"), b
     for b in IQ3:
@@ -172,6 +189,7 @@ def numbers(audit_dir, verify, raw):
     n["n_iq3"] = words[len(IQ3)]
     n["n_own"] = words[sum(b.startswith("IQ3_XXS_") for b in A)]
     n["n_cats"] = words[len({c for b in A for c in A[b]})]
+    n["n_other_iq3"] = words[len(IQ3) - 2]  # 3-bit builds with an imatrix other than the public one
 
     # multi-turn: tasks that go the other way (8-bit fails, public 3-bit passes)
     q8 = A["Q8_0"]["multi_turn_base"]
@@ -203,6 +221,31 @@ def numbers(audit_dir, verify, raw):
     n["iq2_m_mt_unclosed"] = i2m["classes"].get("unclosed", 0)
     n["iq2_m_mt_unclosed_schema"] = i2m["unclosed_schema_like"]
     assert 2 * n["iq2_m_mt_unclosed_schema"] > n["iq2_m_mt_unclosed"], "text: most of them start like a schema copy"
+    # calls without a usable name or arguments that did not crash their task: logged as decode errors
+    n["mt_decode_error_steps"] = sum(v for d in A.values() if "multi_turn_base" in d
+                                     for k, v in d["multi_turn_base"]["handler_status_x_class"].items()
+                                     if k.startswith("decode_error|"))
+    last_turn = 0  # "all of them sit in a task's last turn": read from the saved multi-turn logs
+    sub_mt, stem_mt = C.CATEGORIES["multi_turn_base"]
+    for b, d in A.items():
+        if "multi_turn_base" not in d:
+            continue
+        for r in C.jl(os.path.join(raw, b, "result", MODEL_DIR, sub_mt, f"{stem_mt}_result.json")):
+            turns = C.turns_of(r)
+            for ti, turn in enumerate(turns):
+                for k in turn:
+                    if k.startswith("step_") and C.handler_status(turn[k]) == "decode_error":
+                        assert ti == len(turns) - 1, (b, r["id"], "a decode error before the last turn")
+                        last_turn += 1
+    assert last_turn == n["mt_decode_error_steps"]
+    i2h = i2m["handler_status_x_class"]
+    n["iq2_m_mt_schema_dropped"] = i2h.get("decoded_empty|schema_echo", 0)  # logged schema copies, invalid JSON
+    assert n["iq2_m_mt_schema_dropped"] + i2h.get("decode_error|schema_echo", 0) == n["iq2_m_mt_schema_echo"]
+    assert 2 * n["iq2_m_mt_schema_dropped"] > n["iq2_m_mt_schema_echo"], "text: most logged schema copies are dropped"
+    # figure 2: the two builds with the public imatrix break their calls alike, the others differently
+    top = {b: max(malformed, key=lambda c: A[b]["multi_turn_base"]["classes"].get(c, 0))
+           for b in ("IQ3_XXS", "IQ3_XXS_R", "IQ3_XXS_G", "IQ2_M")}
+    assert top["IQ3_XXS"] == top["IQ3_XXS_R"] and len({top["IQ3_XXS"], top["IQ3_XXS_G"], top["IQ2_M"]}) == 3, top
     # coverage, as the text states it
     cover = {b: set(d) for b, d in A.items()}
     assert {b for b, c in cover.items() if c == {"multi_turn_base"}} == {"Q4_K_M", "IQ2_M"}

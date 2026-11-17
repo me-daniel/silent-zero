@@ -28,7 +28,7 @@ ROWS = [
     ("Closing tag missing", ["<tool_call>", '{"name": "ls", "arguments": {"a": true}}', ""],
      ("no match", "dropped", S.BAD), ("Scored as no call", ["as if the model", "called nothing"]),
      ("tolerant mode", ["parsed and checked", "like row 1"])),
-    ('"name" key missing', ["<tool_call>", '{"cd", "arguments": {"folder": "x"}}', "</tool_call>"],
+    ("Key names missing", ["<tool_call>", '{"cd", "arguments": {"folder": "x"}}', "</tool_call>"],
      ("invalid JSON", "dropped", S.BAD), ("Scored as no call", ["as if the model", "called nothing"]),
      ("key repair", ["rebuilt as a call, then", "checked like row 1"])),
     ("Schema copied", ["<tool_call>", '{"name": "ls", "description": "...",', ' "parameters": {...}}', "</tool_call>"],
