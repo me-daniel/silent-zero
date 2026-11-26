@@ -37,6 +37,8 @@ This project:
 
 ## Status
 
+Silent Zero is a pilot for my master's thesis research.
+
 | Part | State |
 |---|---|
 | Audit | Done. `audit/classify.py`, tests, tables in `audit/results.md` |
